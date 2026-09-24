@@ -1,0 +1,38 @@
+{
+  "expo": {
+    "name": "NRYN Finance",
+    "slug": "nryn-finance",
+    "scheme": "nrynfinance",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "newArchEnabled": true,
+    "android": {
+      "package": "in.kindersports.nrynfinance",
+      "adaptiveIcon": {
+        "backgroundColor": "#00E676"
+      },
+      "permissions": [
+        "READ_SMS",
+        "RECEIVE_SMS"
+      ]
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "in.kindersports.nrynfinance"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-dev-client",
+      "expo-secure-store",
+      "expo-task-manager"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    }
+  }
+}
