@@ -35,7 +35,7 @@ async function chatJSON(system, user, { timeoutMs = 15000 } = {}) {
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${key}`,
-          ...(p.name === 'openrouter' ? { 'HTTP-Referer': 'http://localhost:4200', 'X-Title': 'NRYN Finance' } : {}),
+          ...(p.name === 'openrouter' ? { 'HTTP-Referer': 'https://nryn-finance-wqtv.onrender.com', 'X-Title': 'NRYN Finance' } : {}),
         },
         body: JSON.stringify({
           model: p.model(),
