@@ -62,6 +62,10 @@ export default function AddExpense() {
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.inner}>
+        <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.7}>
+          <Text style={styles.backText}>← Back</Text>
+        </TouchableOpacity>
+
         <Text style={styles.h1}>Add expense</Text>
 
         <View style={styles.amountRow}>
@@ -102,18 +106,76 @@ export default function AddExpense() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { flexGrow: 1, backgroundColor: theme.bg, alignItems: 'center', padding: 20, paddingTop: 40, paddingBottom: 40 },
-  inner: { width: '100%', maxWidth: 460 },
+  wrap: {
+    flexGrow: 1,
+    backgroundColor: theme.bg,
+    paddingHorizontal: 20,
+    paddingTop: 36,
+    paddingBottom: 40,
+  },
+  inner: {
+    width: '100%',
+    maxWidth: 480,
+    alignSelf: 'center',
+  },
+  backBtn: {
+    alignSelf: 'flex-start',
+    marginBottom: 16,
+    paddingVertical: 4,
+  },
+  backText: {
+    color: theme.accent,
+    fontSize: 16,
+    fontWeight: '600',
+  },
   h1: { color: theme.text, fontSize: 24, fontWeight: '800', marginBottom: 20 },
-  amountRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.card, borderRadius: 18, paddingHorizontal: 18, paddingVertical: 10, marginBottom: 14 },
-  rupee: { color: theme.textDim, fontSize: 30, fontWeight: '700', marginRight: 6 },
-  amountInput: { flex: 1, color: theme.text, fontSize: 36, fontWeight: '800', paddingVertical: 8 },
-  input: { backgroundColor: theme.card, color: theme.text, borderRadius: 14, padding: 15, marginBottom: 12, fontSize: 15 },
+  amountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.card,
+    borderRadius: 18,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    marginBottom: 14,
+    width: '100%',
+  },
+  rupee: { color: theme.textDim, fontSize: 30, fontWeight: '700', marginRight: 8 },
+  amountInput: {
+    flex: 1,
+    color: theme.text,
+    fontSize: 34,
+    fontWeight: '800',
+    paddingVertical: 8,
+  },
+  input: {
+    backgroundColor: theme.card,
+    color: theme.text,
+    borderRadius: 14,
+    padding: 15,
+    marginBottom: 12,
+    fontSize: 15,
+    width: '100%',
+  },
   label: { color: theme.textDim, marginTop: 10, marginBottom: 10, fontSize: 13 },
-  catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  cat: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: theme.card, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 9 },
+  catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, width: '100%' },
+  cat: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: theme.card,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
   catText: { color: theme.textDim, fontSize: 12 },
-  btn: { backgroundColor: theme.accent, borderRadius: 14, padding: 16, alignItems: 'center', marginTop: 26 },
+  btn: {
+    backgroundColor: theme.accent,
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    marginTop: 26,
+    width: '100%',
+  },
   btnText: { color: '#0B0F0D', fontWeight: '800', fontSize: 15 },
   cancelBtn: { padding: 12, alignItems: 'center' },
   cancel: { color: theme.textDim, textAlign: 'center', marginTop: 8 },
