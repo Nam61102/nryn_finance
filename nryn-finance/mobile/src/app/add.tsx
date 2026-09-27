@@ -17,7 +17,9 @@ export default function AddExpense() {
   const [cats, setCats] = useState(FALLBACK_CATEGORIES);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => { api.categories().then((r) => setCats(r.categories)).catch(() => {}); }, []);
+  useEffect(() => {
+    api.categories().then((r) => setCats(r.categories)).catch(() => {});
+  }, []);
 
   const goBack = () => {
     if (router.canGoBack()) router.back();
@@ -38,8 +40,6 @@ export default function AddExpense() {
       });
       goBack();
     } catch (e: any) {
-      // The 409 guard: you paid cash, added it, and the UPI SMS arrived 40
-      // seconds later for the same spend (§11.11).
       if (e.status === 409) {
         const ex = e.body?.existing;
         Alert.alert(
@@ -57,66 +57,85 @@ export default function AddExpense() {
 
   return (
     <ScrollView
-      style={{ flex: 1, backgroundColor: theme.bg }}
+      style={styles.container}
       contentContainerStyle={styles.wrap}
       keyboardShouldPersistTaps="handled"
     >
-      <View style={styles.inner}>
-        <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.7}>
-          <Text style={styles.backText}>← Back</Text>
-        </TouchableOpacity>
+      <TouchableOpacity onPress={goBack} style={styles.backBtn} activeOpacity={0.7}>
+        <Text style={styles.backText}>← Back</Text>
+      </TouchableOpacity>
 
-        <Text style={styles.h1}>Add expense</Text>
+      <Text style={styles.h1}>Add expense</Text>
 
-        <View style={styles.amountRow}>
-          <Text style={styles.rupee}>₹</Text>
-          <TextInput
-            style={styles.amountInput}
-            placeholder="0"
-            placeholderTextColor={theme.textDim}
-            keyboardType="decimal-pad"
-            value={amount}
-            onChangeText={setAmount}
-            autoFocus
-          />
-        </View>
-
-        <TextInput style={styles.input} placeholder="Where? (optional)" placeholderTextColor={theme.textDim} value={merchant} onChangeText={setMerchant} />
-        <TextInput style={styles.input} placeholder="Note (optional)" placeholderTextColor={theme.textDim} value={note} onChangeText={setNote} />
-
-        <Text style={styles.label}>Category</Text>
-        <View style={styles.catGrid}>
-          {cats.map((c) => (
-            <TouchableOpacity key={c.key} onPress={() => setCategory(c.key)} style={[styles.cat, category === c.key && { backgroundColor: c.color }]}>
-              <Text style={{ fontSize: 16 }}>{c.icon}</Text>
-              <Text style={[styles.catText, category === c.key && { color: '#0B0F0D', fontWeight: '700' }]}>{c.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-
-        <TouchableOpacity style={[styles.btn, busy && { opacity: 0.6 }]} onPress={() => save(false)} disabled={busy}>
-          <Text style={styles.btnText}>{busy ? 'Saving…' : 'Save expense'}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={goBack} style={styles.cancelBtn}>
-          <Text style={styles.cancel}>Cancel</Text>
-        </TouchableOpacity>
+      <View style={styles.amountRow}>
+        <Text style={styles.rupee}>₹</Text>
+        <TextInput
+          style={styles.amountInput}
+          placeholder="0"
+          placeholderTextColor={theme.textDim}
+          keyboardType="decimal-pad"
+          value={amount}
+          onChangeText={setAmount}
+        />
       </View>
+
+      <TextInput
+        style={styles.input}
+        placeholder="Where? (optional)"
+        placeholderTextColor={theme.textDim}
+        value={merchant}
+        onChangeText={setMerchant}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Note (optional)"
+        placeholderTextColor={theme.textDim}
+        value={note}
+        onChangeText={setNote}
+      />
+
+      <Text style={styles.label}>Category</Text>
+      <View style={styles.catGrid}>
+        {cats.map((c) => (
+          <TouchableOpacity
+            key={c.key}
+            onPress={() => setCategory(c.key)}
+            style={[styles.cat, category === c.key && { backgroundColor: c.color }]}
+          >
+            <Text style={{ fontSize: 16 }}>{c.icon}</Text>
+            <Text style={[styles.catText, category === c.key && { color: '#0B0F0D', fontWeight: '700' }]}>
+              {c.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <TouchableOpacity
+        style={[styles.btn, busy && { opacity: 0.6 }]}
+        onPress={() => save(false)}
+        disabled={busy}
+      >
+        <Text style={styles.btnText}>{busy ? 'Saving…' : 'Save expense'}</Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity onPress={goBack} style={styles.cancelBtn}>
+        <Text style={styles.cancel}>Cancel</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: theme.bg,
+  },
   wrap: {
     flexGrow: 1,
     backgroundColor: theme.bg,
     paddingHorizontal: 20,
     paddingTop: 36,
     paddingBottom: 40,
-  },
-  inner: {
-    width: '100%',
-    maxWidth: 480,
-    alignSelf: 'center',
   },
   backBtn: {
     alignSelf: 'flex-start',
@@ -128,7 +147,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
-  h1: { color: theme.text, fontSize: 24, fontWeight: '800', marginBottom: 20 },
+  h1: {
+    color: theme.text,
+    fontSize: 26,
+    fontWeight: '800',
+    marginBottom: 20,
+  },
   amountRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -137,9 +161,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     paddingVertical: 10,
     marginBottom: 14,
-    width: '100%',
   },
-  rupee: { color: theme.textDim, fontSize: 30, fontWeight: '700', marginRight: 8 },
+  rupee: {
+    color: theme.textDim,
+    fontSize: 30,
+    fontWeight: '700',
+    marginRight: 8,
+  },
   amountInput: {
     flex: 1,
     color: theme.text,
@@ -154,10 +182,18 @@ const styles = StyleSheet.create({
     padding: 15,
     marginBottom: 12,
     fontSize: 15,
-    width: '100%',
   },
-  label: { color: theme.textDim, marginTop: 10, marginBottom: 10, fontSize: 13 },
-  catGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, width: '100%' },
+  label: {
+    color: theme.textDim,
+    marginTop: 10,
+    marginBottom: 10,
+    fontSize: 13,
+  },
+  catGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
   cat: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -167,16 +203,29 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 9,
   },
-  catText: { color: theme.textDim, fontSize: 12 },
+  catText: {
+    color: theme.textDim,
+    fontSize: 12,
+  },
   btn: {
     backgroundColor: theme.accent,
     borderRadius: 14,
     padding: 16,
     alignItems: 'center',
     marginTop: 26,
-    width: '100%',
   },
-  btnText: { color: '#0B0F0D', fontWeight: '800', fontSize: 15 },
-  cancelBtn: { padding: 12, alignItems: 'center' },
-  cancel: { color: theme.textDim, textAlign: 'center', marginTop: 8 },
+  btnText: {
+    color: '#0B0F0D',
+    fontWeight: '800',
+    fontSize: 15,
+  },
+  cancelBtn: {
+    padding: 12,
+    alignItems: 'center',
+  },
+  cancel: {
+    color: theme.textDim,
+    textAlign: 'center',
+    marginTop: 8,
+  },
 });
