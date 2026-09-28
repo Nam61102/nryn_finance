@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Path, G } from 'react-native-svg';
 import { theme } from '../theme';
 import { formatINR } from '../services/api';
 
@@ -13,40 +13,52 @@ export interface SortOption {
   icon: string;
   color: string;
   sublabel: string;
+  startAngle: number;
+  endAngle: number;
 }
 
+// 4 Donut wedges matching the user's reference donut chart palette:
+// Red (Highest), Sky Blue (Newest), Emerald (Lowest), Slate Indigo (Oldest)
 export const SORT_OPTIONS: SortOption[] = [
   {
     key: 'amount_desc',
     label: 'Highest',
     marathiLabel: 'खर्च जास्त',
     icon: '💎',
-    color: '#00E676', // Emerald Green
+    color: '#FF4757', // Ruby / Crimson Red (like reference image)
     sublabel: 'Max spend',
+    startAngle: 0,
+    endAngle: 90,
   },
   {
     key: 'date_desc',
     label: 'Newest',
     marathiLabel: 'नवीन',
     icon: '⚡',
-    color: '#B388FF', // Vibrant Violet
+    color: '#38BDF8', // Sky Blue (like reference image)
     sublabel: 'Latest first',
+    startAngle: 90,
+    endAngle: 180,
   },
   {
     key: 'amount_asc',
     label: 'Lowest',
     marathiLabel: 'खर्च कमी',
     icon: '🪙',
-    color: '#00E5FF', // Cyan / Electric Blue
+    color: '#10B981', // Mint / Emerald Green (like reference image)
     sublabel: 'Min spend',
+    startAngle: 180,
+    endAngle: 270,
   },
   {
     key: 'date_asc',
     label: 'Oldest',
     marathiLabel: 'जुने',
     icon: '⏳',
-    color: '#FFB300', // Amber Gold
+    color: '#6366F1', // Slate Navy / Indigo (like reference image)
     sublabel: 'Earliest first',
+    startAngle: 270,
+    endAngle: 360,
   },
 ];
 
@@ -57,17 +69,53 @@ interface Props {
   totalCount?: number;
 }
 
-export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns }: Props) {
-  const size = 168;
-  const strokeWidth = 11;
-  const activeStrokeWidth = 16;
-  const radius = (size - 24) / 2;
-  const circumference = 2 * Math.PI * radius;
-  const segmentSpan = circumference / 4;
-  const gap = 10;
-  const arcLength = segmentSpan - gap;
+/**
+ * Calculates an SVG path for an annular donut slice
+ */
+function describeDonutSlice(
+  cx: number,
+  cy: number,
+  rInner: number,
+  rOuter: number,
+  startAngleDeg: number,
+  endAngleDeg: number
+): string {
+  const rad = Math.PI / 180;
+  // Rotate so 0 deg starts at top (12 o'clock)
+  const a1 = (startAngleDeg - 90) * rad;
+  const a2 = (endAngleDeg - 90) * rad;
 
-  // Calculate highest and lowest values from currently loaded expenses
+  const x1Outer = cx + rOuter * Math.cos(a1);
+  const y1Outer = cy + rOuter * Math.sin(a1);
+
+  const x2Outer = cx + rOuter * Math.cos(a2);
+  const y2Outer = cy + rOuter * Math.sin(a2);
+
+  const x2Inner = cx + rInner * Math.cos(a2);
+  const y2Inner = cy + rInner * Math.sin(a2);
+
+  const x1Inner = cx + rInner * Math.cos(a1);
+  const y1Inner = cy + rInner * Math.sin(a1);
+
+  const largeArcFlag = endAngleDeg - startAngleDeg > 180 ? 1 : 0;
+
+  return [
+    `M ${x1Outer.toFixed(2)} ${y1Outer.toFixed(2)}`,
+    `A ${rOuter} ${rOuter} 0 ${largeArcFlag} 1 ${x2Outer.toFixed(2)} ${y2Outer.toFixed(2)}`,
+    `L ${x2Inner.toFixed(2)} ${y2Inner.toFixed(2)}`,
+    `A ${rInner} ${rInner} 0 ${largeArcFlag} 0 ${x1Inner.toFixed(2)} ${y1Inner.toFixed(2)}`,
+    'Z',
+  ].join(' ');
+}
+
+export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns }: Props) {
+  const size = 196;
+  const cx = size / 2;
+  const cy = size / 2;
+  const defaultRInner = 48;
+  const defaultROuter = 82;
+
+  // Compute max and min from current transactions
   const expenseAmounts = txns.filter((t) => t.amount > 0).map((t) => t.amount);
   const maxPaise = expenseAmounts.length > 0 ? Math.max(...expenseAmounts) : 0;
   const minPaise = expenseAmounts.length > 0 ? Math.min(...expenseAmounts) : 0;
@@ -89,13 +137,13 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
 
   return (
     <View style={styles.container}>
-      {/* Header */}
+      {/* Header Row */}
       <View style={styles.headerRow}>
         <View style={styles.headerTitleGroup}>
-          <Text style={styles.headerIcon}>⭕</Text>
-          <Text style={styles.headerTitle}>Expense Explorer Wheel</Text>
+          <Text style={styles.headerIcon}>🍩</Text>
+          <Text style={styles.headerTitle}>Expense Breakdown Graph</Text>
         </View>
-        <View style={[styles.activeBadge, { borderColor: `${activeOption.color}40`, backgroundColor: `${activeOption.color}15` }]}>
+        <View style={[styles.activeBadge, { borderColor: `${activeOption.color}45`, backgroundColor: `${activeOption.color}15` }]}>
           <Text style={[styles.activeBadgeText, { color: activeOption.color }]}>
             {activeOption.icon} {activeOption.label}
           </Text>
@@ -103,47 +151,54 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
       </View>
 
       <Text style={styles.subHint}>
-        Touch any segment or quadrant to see those expenses:
+        Touch any slice on the donut graph to filter expenses:
       </Text>
 
-      {/* Circular Wheel Center Graphic */}
-      <View style={styles.wheelWrapper}>
+      {/* Solid Donut Chart Graphic */}
+      <View style={styles.chartWrapper}>
         <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-          <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-            {SORT_OPTIONS.map((opt, index) => {
-              const isActive = opt.key === currentSort;
-              const stroke = isActive ? activeStrokeWidth : strokeWidth;
-              const offset = - (index * segmentSpan);
-              return (
-                <Circle
-                  key={opt.key}
-                  cx={size / 2}
-                  cy={size / 2}
-                  r={radius}
-                  stroke={opt.color}
-                  strokeWidth={stroke}
-                  strokeDasharray={`${arcLength} ${circumference - arcLength}`}
-                  strokeDashoffset={offset}
-                  strokeLinecap="round"
-                  fill="none"
-                  opacity={isActive ? 1 : 0.3}
-                  onPress={() => onSelectSort(opt.key)}
-                />
-              );
-            })}
+          <Svg width={size} height={size}>
+            <G>
+              {SORT_OPTIONS.map((opt) => {
+                const isActive = opt.key === currentSort;
+                const midAngle = (opt.startAngle + opt.endAngle) / 2;
+                const rad = (midAngle - 90) * (Math.PI / 180);
+
+                // If active, slice pops out by 5px and expands outer radius by 3px
+                const popDist = isActive ? 5 : 0;
+                const sliceCx = cx + popDist * Math.cos(rad);
+                const sliceCy = cy + popDist * Math.sin(rad);
+                const rOut = isActive ? defaultROuter + 3 : defaultROuter;
+                const rIn = defaultRInner;
+
+                const pathData = describeDonutSlice(sliceCx, sliceCy, rIn, rOut, opt.startAngle, opt.endAngle);
+
+                return (
+                  <Path
+                    key={opt.key}
+                    d={pathData}
+                    fill={opt.color}
+                    opacity={isActive ? 1 : 0.65}
+                    stroke={theme.card}
+                    strokeWidth={2.5}
+                    onPress={() => onSelectSort(opt.key)}
+                  />
+                );
+              })}
+            </G>
           </Svg>
 
-          {/* Center Info in the Wheel */}
-          <View style={styles.wheelCenterContent} pointerEvents="none">
+          {/* Donut Hole Center Content */}
+          <View style={styles.donutHole} pointerEvents="none">
             <Text style={styles.centerIcon}>{activeOption.icon}</Text>
             <Text style={[styles.centerTitle, { color: activeOption.color }]}>{activeOption.label}</Text>
             <Text style={styles.centerStat}>{getStatForOption(activeOption.key)}</Text>
-            <Text style={styles.centerActionHint}>Touch to filter</Text>
+            <Text style={styles.centerActionHint}>Tap slice</Text>
           </View>
         </View>
       </View>
 
-      {/* 4 Interactive Quadrant Touch Cards (2x2 Grid) */}
+      {/* 4 Quadrants Interactive Touch Grid */}
       <View style={styles.grid}>
         {SORT_OPTIONS.map((opt) => {
           const isActive = opt.key === currentSort;
@@ -154,7 +209,7 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
                 styles.quadrantCard,
                 isActive && {
                   borderColor: opt.color,
-                  backgroundColor: `${opt.color}18`,
+                  backgroundColor: `${opt.color}16`,
                   shadowColor: opt.color,
                   shadowOpacity: 0.25,
                   shadowRadius: 8,
@@ -165,13 +220,8 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
               activeOpacity={0.7}
             >
               <View style={styles.cardTopRow}>
+                <View style={[styles.colorChip, { backgroundColor: opt.color }]} />
                 <Text style={styles.cardIcon}>{opt.icon}</Text>
-                <View
-                  style={[
-                    styles.indicatorDot,
-                    { backgroundColor: isActive ? opt.color : `${opt.color}40` },
-                  ]}
-                />
               </View>
 
               <Text style={[styles.cardLabel, isActive && { color: theme.text, fontWeight: '800' }]}>
@@ -187,7 +237,7 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
       </View>
 
       {/* Active Filter Summary Bar */}
-      <View style={[styles.summaryBar, { borderColor: `${activeOption.color}30`, backgroundColor: `${activeOption.color}0D` }]}>
+      <View style={[styles.summaryBar, { borderColor: `${activeOption.color}35`, backgroundColor: `${activeOption.color}10` }]}>
         <View style={[styles.summaryBullet, { backgroundColor: activeOption.color }]} />
         <Text style={styles.summaryText}>
           Showing <Text style={{ color: activeOption.color, fontWeight: '700' }}>{activeOption.label}</Text> ({activeOption.marathiLabel}) expenses below:
@@ -239,25 +289,25 @@ const styles = StyleSheet.create({
   subHint: {
     color: theme.textDim,
     fontSize: 12,
-    marginBottom: 14,
+    marginBottom: 10,
   },
-  wheelWrapper: {
+  chartWrapper: {
     alignItems: 'center',
     justifyContent: 'center',
     marginVertical: 4,
   },
-  wheelCenterContent: {
+  donutHole: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
     padding: 8,
   },
   centerIcon: {
-    fontSize: 22,
-    marginBottom: 2,
+    fontSize: 20,
+    marginBottom: 1,
   },
   centerTitle: {
-    fontSize: 15,
+    fontSize: 14,
     fontWeight: '800',
     letterSpacing: -0.2,
   },
@@ -272,13 +322,13 @@ const styles = StyleSheet.create({
     fontSize: 9,
     textTransform: 'uppercase',
     letterSpacing: 0.5,
-    marginTop: 3,
+    marginTop: 2,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: 10,
-    marginTop: 16,
+    marginTop: 14,
   },
   quadrantCard: {
     width: '48%',
@@ -294,13 +344,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 6,
   },
-  cardIcon: {
-    fontSize: 18,
-  },
-  indicatorDot: {
-    width: 8,
-    height: 8,
+  colorChip: {
+    width: 14,
+    height: 14,
     borderRadius: 4,
+  },
+  cardIcon: {
+    fontSize: 16,
   },
   cardLabel: {
     color: theme.textDim,
