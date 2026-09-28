@@ -4,7 +4,6 @@ import { router, useFocusEffect } from 'expo-router';
 import { api } from '../../services/api';
 import { syncSms } from '../../sync/sms.sync';
 import { theme } from '../../theme';
-import BudgetRing from '../../components/BudgetRing';
 import MonthSwitcher from '../../components/MonthSwitcher';
 import CategoryChip from '../../components/CategoryChip';
 import ExpenseRow from '../../components/ExpenseRow';
@@ -69,6 +68,9 @@ export default function Home() {
 
   const ring = status?.ring;
   const noBudget = !ring?.total;
+  const comparison = status?.comparison;
+  const currentSpentRupees = ((status?.ring?.spent || 0) / 100).toLocaleString('en-IN');
+  const lastMonthSpentRupees = ((comparison?.lastMonthSpent || 0) / 100).toLocaleString('en-IN');
 
   return (
     <ScrollView
@@ -87,19 +89,79 @@ export default function Home() {
 
       <MonthSwitcher months={months} value={month} onChange={(m) => { setMonth(m); load(m); }} />
 
-      <View style={styles.ringCard}>
+      <View style={styles.spendCard}>
+        <View style={styles.cardHeaderRow}>
+          <Text style={styles.cardHeaderTitle}>Monthly Spending Overview</Text>
+          <Text style={styles.cardHeaderBadge}>{status?.period?.shortLabel || 'Current'}</Text>
+        </View>
+
+        <View style={styles.statsRow}>
+          <View style={styles.statCol}>
+            <Text style={styles.statLabel}>This Month ({status?.period?.shortLabel || 'Current'})</Text>
+            <Text style={styles.statValueThis}>₹{currentSpentRupees}</Text>
+          </View>
+
+          <View style={styles.statDivider} />
+
+          <View style={styles.statCol}>
+            <Text style={styles.statLabel}>Last Month ({comparison?.prevLabel || 'Previous'})</Text>
+            <Text style={styles.statValuePrev}>₹{lastMonthSpentRupees}</Text>
+          </View>
+        </View>
+
+        {comparison && (
+          <View
+            style={[
+              styles.insightBadge,
+              comparison.isSaved && styles.insightSaved,
+              comparison.isMore && styles.insightMore,
+            ]}
+          >
+            <Text style={styles.insightIcon}>
+              {comparison.isSaved ? '📉' : comparison.isMore ? '📈' : '📊'}
+            </Text>
+            <Text
+              style={[
+                styles.insightText,
+                comparison.isSaved && styles.textSaved,
+                comparison.isMore && styles.textMore,
+              ]}
+            >
+              {comparison.comparisonText}
+            </Text>
+          </View>
+        )}
+
         {noBudget ? (
-          // Empty states are real screens — you hit this one on day one.
-          <TouchableOpacity style={styles.emptyRing} onPress={() => router.push('/(tabs)/budgets')}>
-            <Text style={styles.emptyBig}>Set your monthly budget</Text>
-            <Text style={styles.emptySub}>Spent so far: ₹{((status?.ring?.spent || 0) / 100).toLocaleString('en-IN')}</Text>
+          <TouchableOpacity style={styles.budgetRow} onPress={() => router.push('/(tabs)/budgets')}>
+            <Text style={styles.budgetPromptText}>🎯 Set monthly budget to track pace →</Text>
           </TouchableOpacity>
         ) : (
-          <BudgetRing total={ring.total} spent={ring.spent} remaining={ring.remaining} ratio={ring.ratio} over={ring.over} />
+          <TouchableOpacity style={styles.budgetProgressWrap} onPress={() => router.push('/(tabs)/budgets')}>
+            <View style={styles.budgetProgressHeader}>
+              <Text style={styles.budgetProgressLabel}>
+                Monthly Budget: ₹{((ring.total || 0) / 100).toLocaleString('en-IN')}
+              </Text>
+              <Text style={[styles.budgetProgressStatus, ring.over && { color: theme.danger }]}>
+                {ring.over
+                  ? `Over by ₹${(((ring.spent || 0) - (ring.total || 0)) / 100).toLocaleString('en-IN')}`
+                  : `₹${(((ring.remaining || 0)) / 100).toLocaleString('en-IN')} left`}
+              </Text>
+            </View>
+            <View style={styles.progressBarTrack}>
+              <View
+                style={[
+                  styles.progressBarFill,
+                  { width: `${Math.min((ring.ratio || 0) * 100, 100)}%` },
+                  ring.over && { backgroundColor: theme.danger },
+                ]}
+              />
+            </View>
+          </TouchableOpacity>
         )}
       </View>
 
-      {status?.pace && <PaceBanner pace={status.pace} />}
+      {status?.pace && !noBudget && <PaceBanner pace={status.pace} />}
 
       {status?.chips?.length > 0 && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 18 }} contentContainerStyle={{ paddingHorizontal: 16 }}>
@@ -144,10 +206,146 @@ const styles = StyleSheet.create({
   hello: { color: theme.text, fontSize: 20, fontWeight: '800' },
   reviewPill: { backgroundColor: 'rgba(255,179,0,0.16)', borderRadius: 999, paddingHorizontal: 10, paddingVertical: 5 },
   reviewText: { color: theme.warn, fontSize: 12, fontWeight: '600' },
-  ringCard: { backgroundColor: theme.card, margin: 16, marginTop: 10, borderRadius: 24, paddingVertical: 24, alignItems: 'center' },
-  emptyRing: { alignItems: 'center', paddingVertical: 36 },
-  emptyBig: { color: theme.text, fontSize: 17, fontWeight: '700' },
-  emptySub: { color: theme.textDim, marginTop: 6, fontSize: 13 },
+  spendCard: {
+    backgroundColor: theme.card,
+    marginHorizontal: 16,
+    marginTop: 10,
+    borderRadius: 22,
+    padding: 18,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  cardHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 14,
+  },
+  cardHeaderTitle: {
+    color: theme.text,
+    fontSize: 15,
+    fontWeight: '700',
+  },
+  cardHeaderBadge: {
+    color: theme.textDim,
+    fontSize: 12,
+    fontWeight: '600',
+    backgroundColor: theme.cardAlt,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingBottom: 14,
+  },
+  statCol: {
+    flex: 1,
+  },
+  statDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: theme.border,
+    marginHorizontal: 12,
+  },
+  statLabel: {
+    color: theme.textDim,
+    fontSize: 12,
+    fontWeight: '500',
+    marginBottom: 6,
+  },
+  statValueThis: {
+    color: theme.text,
+    fontSize: 22,
+    fontWeight: '800',
+  },
+  statValuePrev: {
+    color: theme.textDim,
+    fontSize: 18,
+    fontWeight: '700',
+  },
+  insightBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.cardAlt,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginTop: 2,
+    marginBottom: 10,
+    gap: 8,
+  },
+  insightSaved: {
+    backgroundColor: 'rgba(0, 230, 118, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(0, 230, 118, 0.28)',
+  },
+  insightMore: {
+    backgroundColor: 'rgba(255, 179, 0, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 179, 0, 0.28)',
+  },
+  insightIcon: {
+    fontSize: 16,
+  },
+  insightText: {
+    color: theme.text,
+    fontSize: 13,
+    fontWeight: '600',
+    flex: 1,
+  },
+  textSaved: {
+    color: theme.accent,
+  },
+  textMore: {
+    color: theme.warn,
+  },
+  budgetRow: {
+    marginTop: 4,
+    paddingTop: 10,
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  budgetPromptText: {
+    color: theme.accent,
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  budgetProgressWrap: {
+    marginTop: 4,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255, 255, 255, 0.06)',
+  },
+  budgetProgressHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 6,
+  },
+  budgetProgressLabel: {
+    color: theme.textDim,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  budgetProgressStatus: {
+    color: theme.accent,
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  progressBarTrack: {
+    height: 6,
+    backgroundColor: theme.cardAlt,
+    borderRadius: 999,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: theme.accent,
+    borderRadius: 999,
+  },
   listHeader: { paddingHorizontal: 16, marginTop: 26, marginBottom: 6, gap: 10 },
   listTitle: { color: theme.text, fontSize: 17, fontWeight: '700' },
   sortPill: { backgroundColor: theme.cardAlt, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },

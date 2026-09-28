@@ -40,16 +40,54 @@ function paceFor(spent, budget, elapsedDays, totalDays) {
  *  make two requests to render one card. */
 async function status(userId, monthStr) {
   const p = resolveMonth(monthStr);
-  const [summary, cats, budgets] = await Promise.all([
+  const [summary, cats, budgets, prevSummary] = await Promise.all([
     monthSummary(userId, p.month),
     byCategory(userId, p.month),
     resolveBudgets(userId, p.month),
+    monthSummary(userId, p.prev),
   ]);
 
   const totalBudget = budgets.total?.amount || 0;
   const spent = summary.spent;
   const remaining = totalBudget - spent;          // TRUE value, may be negative
   const spentByCat = Object.fromEntries(cats.categories.map((c) => [c.category, c.spent]));
+
+  const prevP = resolveMonth(p.prev);
+  const lastMonthSpent = prevSummary?.spent || 0;
+  const diff = spent - lastMonthSpent;
+  const isSaved = lastMonthSpent > spent;
+  const isMore = spent > lastMonthSpent;
+  const savedAmount = isSaved ? lastMonthSpent - spent : 0;
+  const moreAmount = isMore ? spent - lastMonthSpent : 0;
+  const percentChange = lastMonthSpent > 0 ? Math.round((Math.abs(diff) / lastMonthSpent) * 100) : null;
+
+  let comparisonText = '';
+  if (lastMonthSpent === 0 && spent === 0) {
+    comparisonText = 'No expenses recorded';
+  } else if (lastMonthSpent === 0) {
+    comparisonText = 'First tracked month';
+  } else if (isSaved) {
+    comparisonText = `Saved ₹${(savedAmount / 100).toLocaleString('en-IN')}${percentChange !== null ? ` (${percentChange}%)` : ''} compared to ${prevP.shortLabel}`;
+  } else if (isMore) {
+    comparisonText = `Spent ₹${(moreAmount / 100).toLocaleString('en-IN')}${percentChange !== null ? ` (${percentChange}%)` : ''} more than ${prevP.shortLabel}`;
+  } else {
+    comparisonText = `Same spend as ${prevP.shortLabel}`;
+  }
+
+  const comparison = {
+    currentSpent: spent,
+    lastMonthSpent,
+    diff,
+    isSaved,
+    isMore,
+    savedAmount,
+    moreAmount,
+    percentChange,
+    prevMonth: prevP.month,
+    prevLabel: prevP.shortLabel,
+    prevFullLabel: prevP.label,
+    comparisonText,
+  };
 
   const chips = Object.entries(budgets.categories)
     .filter(([, b]) => b && b.amount > 0)
@@ -74,6 +112,7 @@ async function status(userId, monthStr) {
 
   return {
     period: p,
+    comparison,
     ring: {
       total: totalBudget,
       spent,
