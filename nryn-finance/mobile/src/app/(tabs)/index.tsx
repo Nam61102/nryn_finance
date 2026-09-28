@@ -8,13 +8,9 @@ import MonthSwitcher from '../../components/MonthSwitcher';
 import CategoryChip from '../../components/CategoryChip';
 import ExpenseRow from '../../components/ExpenseRow';
 import PaceBanner from '../../components/PaceBanner';
+import ExpensesCircularGraph from '../../components/ExpensesCircularGraph';
 
-const SORTS = [
-  { key: 'amount_desc', label: 'Highest' },
-  { key: 'amount_asc', label: 'Lowest' },
-  { key: 'date_desc', label: 'Newest' },
-  { key: 'date_asc', label: 'Oldest' },
-];
+
 
 export default function Home() {
   const [months, setMonths] = useState<any[]>([]);
@@ -40,6 +36,19 @@ export default function Home() {
       setLoading(false);
     }
   }, [sort]);
+
+  const handleSelectSort = (newSort: string) => {
+    setSort(newSort);
+    // Instant in-memory sort feedback
+    setTxns((prev) => {
+      const copy = [...prev];
+      if (newSort === 'amount_desc') return copy.sort((a, b) => b.amount - a.amount);
+      if (newSort === 'amount_asc') return copy.sort((a, b) => a.amount - b.amount);
+      if (newSort === 'date_desc') return copy.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
+      if (newSort === 'date_asc') return copy.sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
+      return copy;
+    });
+  };
 
   useEffect(() => { load(month || undefined); }, [sort]);
 
@@ -171,15 +180,18 @@ export default function Home() {
         </ScrollView>
       )}
 
+      <ExpensesCircularGraph
+        currentSort={sort}
+        onSelectSort={handleSelectSort}
+        txns={txns}
+        totalCount={txns.length}
+      />
+
       <View style={styles.listHeader}>
-        <Text style={styles.listTitle}>Expenses</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6 }}>
-          {SORTS.map((s) => (
-            <TouchableOpacity key={s.key} onPress={() => setSort(s.key)} style={[styles.sortPill, sort === s.key && styles.sortActive]}>
-              <Text style={[styles.sortText, sort === s.key && { color: '#0B0F0D' }]}>{s.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+        <Text style={styles.listTitle}>Expense Transactions</Text>
+        <View style={styles.countBadge}>
+          <Text style={styles.countBadgeText}>{txns.length} items</Text>
+        </View>
       </View>
 
       {txns.length === 0 ? (
@@ -346,11 +358,24 @@ const styles = StyleSheet.create({
     backgroundColor: theme.accent,
     borderRadius: 999,
   },
-  listHeader: { paddingHorizontal: 16, marginTop: 26, marginBottom: 6, gap: 10 },
-  listTitle: { color: theme.text, fontSize: 17, fontWeight: '700' },
-  sortPill: { backgroundColor: theme.cardAlt, borderRadius: 999, paddingHorizontal: 12, paddingVertical: 6 },
-  sortActive: { backgroundColor: theme.accent },
-  sortText: { color: theme.textDim, fontSize: 12, fontWeight: '600' },
+  listHeader: {
+    paddingHorizontal: 16,
+    marginTop: 22,
+    marginBottom: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  listTitle: { color: theme.text, fontSize: 16, fontWeight: '700' },
+  countBadge: {
+    backgroundColor: theme.cardAlt,
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  countBadgeText: { color: theme.textDim, fontSize: 12, fontWeight: '600' },
   emptyList: { padding: 32, alignItems: 'center' },
   emptyListText: { color: theme.text, fontSize: 14, fontWeight: '600' },
   emptyListSub: { color: theme.textDim, fontSize: 12, marginTop: 6, textAlign: 'center' },
