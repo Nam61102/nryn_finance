@@ -11,27 +11,60 @@ export default function Login() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
 
   const submit = async () => {
+    if (!email.trim()) {
+      return Alert.alert('Missing Email', 'Please enter your email address.');
+    }
+    if (!password) {
+      return Alert.alert('Missing Password', 'Please enter your password.');
+    }
     setBusy(true);
     try {
       const res = mode === 'login' ? await api.login(email.trim(), password) : await api.register(email.trim(), password);
       await setToken(res.token);
       router.replace('/onboarding');
     } catch (e: any) {
-      // The single most common setup mistake is EXPO_PUBLIC_API_URL pointing at
-      // localhost, which on the phone means the phone itself. Say so plainly.
-      Alert.alert('Could not sign in', `${e.message}\n\nAPI: ${API_BASE}\n\nIf this timed out, EXPO_PUBLIC_API_URL must be your computer's LAN IP, and you must restart with: npx expo start -c`);
+      const errMsg = e.body?.error || e.message || '';
+      if (errMsg.includes('email_taken') || e.status === 409) {
+        Alert.alert(
+          'Account Already Exists',
+          'This email is already registered. Switched to Sign In mode — please enter your password and tap Sign in.',
+          [{ text: 'OK' }]
+        );
+        setMode('login');
+      } else if (errMsg.includes('invalid_credentials') || e.status === 401) {
+        Alert.alert('Sign In Failed', 'Incorrect email or password. Please check your details and try again.');
+      } else if (errMsg.includes('email_and_8char_password_required') || e.status === 400) {
+        Alert.alert('Password Too Short', 'Password must be at least 8 characters long.');
+      } else {
+        Alert.alert('Could Not Connect', `${errMsg}\n\nAPI: ${API_BASE}`);
+      }
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.wrap}>
+    <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
       <Text style={styles.logo}>NRYN Finance</Text>
       <Text style={styles.sub}>Your spends, read from your own SMS inbox.</Text>
 
-      <TextInput style={styles.input} placeholder="Email" placeholderTextColor={theme.textDim} autoCapitalize="none" keyboardType="email-address" value={email} onChangeText={setEmail} />
-      <TextInput style={styles.input} placeholder="Password (min 8 chars)" placeholderTextColor={theme.textDim} secureTextEntry value={password} onChangeText={setPassword} />
+      <TextInput
+        style={styles.input}
+        placeholder="Email"
+        placeholderTextColor={theme.textDim}
+        autoCapitalize="none"
+        keyboardType="email-address"
+        value={email}
+        onChangeText={setEmail}
+      />
+      <TextInput
+        style={styles.input}
+        placeholder="Password (min 8 chars)"
+        placeholderTextColor={theme.textDim}
+        secureTextEntry
+        value={password}
+        onChangeText={setPassword}
+      />
 
       <TouchableOpacity style={[styles.btn, busy && { opacity: 0.6 }]} onPress={submit} disabled={busy}>
         <Text style={styles.btnText}>{busy ? 'Please wait…' : mode === 'login' ? 'Sign in' : 'Create account'}</Text>
