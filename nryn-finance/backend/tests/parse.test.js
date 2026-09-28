@@ -44,6 +44,12 @@ const SAMPLES = [
     expect: { amount: 18000, direction: 'debit', last4: '7788' },
   },
   {
+    name: 'SBI 3-letter sender with OTP warning',
+    sender: 'AD-SBI',
+    body: 'Dear UPI user A/C 1234 debited by 500.0 on 28Sep26 by transfer to SWIGGY Ref 62718291. Do not share your UPI PIN/OTP with anyone. -SBI',
+    expect: { amount: 50000, direction: 'debit', last4: '1234', bankName: 'SBI' },
+  },
+  {
     name: 'Axis card swipe',
     sender: 'AD-AXISBK',
     body: 'Spent Card no. XX4455 INR 2399 21-09-26 AMAZON RETAIL Avl Lmt INR 87601. Not you? SMS BLOCK 4455 to 918691000002',

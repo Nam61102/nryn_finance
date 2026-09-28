@@ -21,9 +21,21 @@ export default function Profile() {
 
   const resync = async () => {
     setSyncing(true);
-    const p = await syncSms({ full: true });
-    setSyncing(false);
-    Alert.alert('Sync finished', `Read ${p.read} · bank messages ${p.kept} · uploaded ${p.uploaded} · duplicates ${p.duplicates}`);
+    try {
+      const p = await syncSms({ full: true });
+      setSyncing(false);
+      if (p.phase === 'error') {
+        Alert.alert('Sync Error', p.error || 'Failed to scan SMS inbox');
+      } else {
+        Alert.alert(
+          'Sync finished',
+          `Total SMS read: ${p.read}\nBank messages found: ${p.kept}\nUploaded: ${p.uploaded}\nDuplicates: ${p.duplicates}`,
+        );
+      }
+    } catch (e: any) {
+      setSyncing(false);
+      Alert.alert('Sync Error', e?.message || 'Sync failed');
+    }
     load();
   };
 

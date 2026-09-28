@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, RefreshControl, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, RefreshControl, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { api } from '../../services/api';
 import { syncSms } from '../../sync/sms.sync';
@@ -49,7 +49,14 @@ export default function Home() {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    await syncSms();               // pull-to-refresh does a REAL SMS sync
+    try {
+      const p = await syncSms(); // pull-to-refresh does a REAL SMS sync
+      if (p.phase === 'error') {
+        Alert.alert('Sync issue', p.error || 'Failed to read SMS');
+      }
+    } catch (e: any) {
+      Alert.alert('Sync error', e?.message || 'Failed to sync');
+    }
     await load(month || undefined);
     setRefreshing(false);
   };

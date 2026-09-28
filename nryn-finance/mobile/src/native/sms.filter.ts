@@ -10,23 +10,43 @@
  *   a false negative silently loses a transaction you will never notice.
  */
 
-// Gate 1 — DLT sender header: AD-HDFCBK, VM-ICICIB, JD-SBIUPI, JM-HDFCBK…
-// Match the 4–8 letter BODY, never the full header: the two-letter operator
-// prefix changes without warning (§11.3).
-const SENDER_RE = /^[A-Z]{2}-?[A-Z]{4,8}$/i;
+// Gate 1 — DLT sender header: AD-HDFCBK, VM-ICICIB, JD-SBIUPI, AD-SBI, PAYTM, CRED, GPAY…
+// Supports 2-character operator prefix (optional hyphen) + 3–10 alphanumeric chars,
+// or standalone 3–10 char headers, while strictly rejecting personal phone numbers.
+export function isBankSender(sender: string): boolean {
+  if (!sender) return false;
+  const s = sender.trim().replace(/^\+91/, '').replace(/^91(?=[A-Za-z]{2}-)/, '');
+  // Reject personal phone numbers (+9198..., 9876543210, etc.)
+  if (/^\+?\d{7,15}$/.test(s)) return false;
+  // Match TRAI DLT headers: e.g. AD-SBI, VM-HDFCBK, VK-PAYTM or HDFCBK, SBI, PAYTM, CRED
+  return /^(?:[A-Za-z]{2}-?)?[A-Za-z0-9]{3,10}$/.test(s);
+}
 
 // Gate 2 — a rupee amount is present.
 const AMOUNT_RE = /(?:rs\.?|inr|₹)\s?[\d,]+(?:\.\d{1,2})?/i;
 
+// Some banks omit the currency: "debited by 180.0".
+const BARE_AMOUNT_RE = /\b(?:debited|credited|spent|paid|sent|withdrawn)\s+(?:by|for|with|of)?\s*[\d,]+(?:\.\d{1,2})?\b/i;
+
 // Gate 3 — transactional vocabulary.
 const TXN_RE = /debited|credited|spent|paid|received|withdrawn|txn|upi|a\/c|card ending|purchase|sent\s+rs/i;
 
-// Gate 4 — NOT an OTP or a promo. This one is not optional: OTP messages come
-// from the same sender IDs and contain amounts, so they sail through 1–3.
-const EXCLUDE_RE = /\botp\b|one[- ]time password|do not share|never share|cashback upto|apply now|loan offer|emi offer|pre-?approved|click here|t&c apply|win\b|congratulations/i;
+// Gate 4 — NOT an OTP or promo.
+// Mandatory safety warnings (e.g. "Never share your OTP/PIN", "If not you click here")
+// are appended by RBI regulation to legitimate debit SMS. We must ONLY exclude if
+// it is an actual OTP authorization message or marketing offer.
+const CONFIRMED_TXN_RE = /\b(?:debited|credited|spent|withdrawn|sent\s+(?:rs|inr|₹)|paid\s+(?:rs|inr|₹|to)|transfer(?:red)?\s+to|purchase\s+of)\b/i;
+const STRICT_OTP_RE = /(?:is\s+(?:your\s+|the\s+)?otp\b|\botp\s+(?:is|to\s+approve|to\s+complete)\b|\buse\s+otp\b|\bvalid\s+for\s+\d+\s*min|\bexpires\s+in\s+\d+\s*min)/i;
+const PROMO_RE = /\b(?:pre-?approved\s+(?:loan|offer|card|limit)|apply\s+now|avail\s+loan|get\s+instant\s+loan|loan\s+(?:offer|upto|up\s+to)|emi\s+offer|congratulations\s+you\s+are\s+eligible)\b/i;
 
-// Some banks omit the currency: "debited by 180.0".
-const BARE_AMOUNT_RE = /\b(?:debited|credited|spent|paid|sent|withdrawn)\s+(?:by|for|with|of)?\s*[\d,]+(?:\.\d{1,2})?\b/i;
+export function isExcluded(body: string): boolean {
+  if (CONFIRMED_TXN_RE.test(body)) {
+    if (STRICT_OTP_RE.test(body)) return true;
+    if (PROMO_RE.test(body)) return true;
+    return false;
+  }
+  return /\b(?:otp|one[- ]time password|pre-?approved|apply now|loan offer|emi offer|win\b|congratulations|cashback upto)\b/i.test(body);
+}
 
 export type RawSms = { _id: string; address: string; body: string; date: number };
 
@@ -40,8 +60,8 @@ export function rejectReason(sms: RawSms): RejectReason {
   const sender = (sms.address || '').trim();
   const body = sms.body || '';
 
-  if (!SENDER_RE.test(sender)) return 'sender';
-  if (EXCLUDE_RE.test(body)) return 'excluded';
+  if (!isBankSender(sender)) return 'sender';
+  if (isExcluded(body)) return 'excluded';
   if (!AMOUNT_RE.test(body) && !BARE_AMOUNT_RE.test(body)) return 'amount';
   if (!TXN_RE.test(body)) return 'txn_words';
   return null;

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { requestPermission, isSupported } from '../native/sms.reader';
 import { syncSms, markBackfillDone, type SyncProgress } from '../sync/sms.sync';
@@ -17,9 +17,27 @@ export default function Onboarding() {
   const start = async () => {
     const ok = await requestPermission();
     setGranted(ok);
-    if (!ok) return;
+    if (!ok) {
+      Alert.alert('Permission required', 'Please grant SMS permission in settings to automatically track bank expenses.');
+      return;
+    }
     await registerBackgroundSync().catch(() => {});
-    await syncSms({ full: true, onProgress: setProgress });
+    const res = await syncSms({ full: true, onProgress: setProgress });
+    if (res.phase === 'error') {
+      Alert.alert('Sync failed', res.error || 'Failed to scan SMS inbox.');
+      return;
+    }
+    if (res.read === 0) {
+      Alert.alert(
+        'No SMS Read',
+        'Could not read any messages from the inbox. Please ensure SMS permission is granted in Android App Settings.',
+        [
+          { text: 'Try Again', onPress: () => start() },
+          { text: 'Continue to Dashboard', onPress: () => router.replace('/(tabs)') },
+        ],
+      );
+      return;
+    }
     await markBackfillDone();
     router.replace('/(tabs)');
   };

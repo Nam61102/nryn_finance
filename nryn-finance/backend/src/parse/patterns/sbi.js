@@ -4,7 +4,7 @@ const { baseExtract, findMerchantRaw } = require('./common');
 module.exports = {
   id: 'sbi',
   bank: 'SBI',
-  tokens: ['SBIINB','SBIUPI','ATMSBI','SBICRD','SBIPSG'],
+  tokens: ['SBI', 'SBIINB', 'SBIUPI', 'ATMSBI', 'SBICRD', 'SBIPSG', 'CBSSBI'],
   match(body, ctx) {
     const base = baseExtract(body, ctx.receivedAt);
     if (base.amount === null || !base.direction) return null;

@@ -68,6 +68,7 @@ export function listInbox(opts: ListOpts = {}): Promise<RawSms[]> {
 
     const filter = {
       box: 'inbox',
+      sortOrder: 'date DESC',
       indexFrom: opts.indexFrom ?? 0,
       maxCount: opts.maxCount ?? 500,
       ...(opts.minDate ? { minDate: opts.minDate } : {}),

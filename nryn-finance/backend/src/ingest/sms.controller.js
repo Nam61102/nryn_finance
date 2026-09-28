@@ -2,6 +2,7 @@
 const Device = require('../db/models/Device');
 const RawMessage = require('../db/models/RawMessage');
 const { ingestBatch } = require('./ingest.service');
+const { drainPending } = require('../parse/parse.service');
 
 const MAX_BATCH = 200;
 
@@ -11,6 +12,7 @@ async function postSms(req, res) {
   if (messages.length > MAX_BATCH) return res.status(413).json({ error: 'batch_too_large', max: MAX_BATCH });
 
   const result = await ingestBatch({ userId: req.userId, deviceId, source: 'sms', messages });
+  drainPending({ limit: 100 }).catch(() => {});
   res.status(202).json(result);
 }
 

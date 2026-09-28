@@ -31,7 +31,14 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   });
 
   const text = await res.text();
-  const body = text ? JSON.parse(text) : null;
+  let body: any = null;
+  if (text) {
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { error: text.slice(0, 120) };
+    }
+  }
   if (!res.ok) throw new ApiError(res.status, body);
   return body as T;
 }

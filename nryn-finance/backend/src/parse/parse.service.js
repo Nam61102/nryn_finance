@@ -12,14 +12,22 @@ const { iconFor } = require('../shared/categories');
 
 /** Belt-and-braces server-side OTP re-check (§9). Should never fire — the
  *  phone filter already dropped these — but if it does, we refuse to store it. */
-const OTP_RE = /\b(otp|one[ -]?time password|do not share|never share)\b/i;
+const STRICT_OTP_RE = /(?:is\s+(?:your\s+|the\s+)?otp\b|\botp\s+(?:is|to\s+approve|to\s+complete)\b|\buse\s+otp\b|\bvalid\s+for\s+\d+\s*min|\bexpires\s+in\s+\d+\s*min)/i;
+const CONFIRMED_TXN_RE = /\b(?:debited|credited|spent|withdrawn|sent\s+(?:rs|inr|₹)|paid\s+(?:rs|inr|₹|to)|transfer(?:red)?\s+to|purchase\s+of)\b/i;
+
+function isOtpMessage(body) {
+  if (!body) return false;
+  if (STRICT_OTP_RE.test(body)) return true;
+  if (!CONFIRMED_TXN_RE.test(body) && /\b(?:otp|one[ -]?time password)\b/i.test(body)) return true;
+  return false;
+}
 
 /**
  * Parse one raw message into a transaction.
  * regex first → LLM only on a miss → normalize → dedupe → categorize → write.
  */
 async function parseRawMessage(raw, { user } = {}) {
-  if (OTP_RE.test(raw.body)) {
+  if (isOtpMessage(raw.body)) {
     await RawMessage.updateOne({ _id: raw._id }, { $set: { status: 'ignored', failureReason: 'otp_detected' } });
     return { status: 'ignored', reason: 'otp_detected' };
   }

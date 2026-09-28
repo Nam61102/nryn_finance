@@ -3,7 +3,15 @@ const RawMessage = require('../db/models/RawMessage');
 const Device = require('../db/models/Device');
 const N = require('../parse/normalize');
 
-const OTP_RE = /\b(otp|one[ -]?time password|do not share|never share)\b/i;
+const STRICT_OTP_RE = /(?:is\s+(?:your\s+|the\s+)?otp\b|\botp\s+(?:is|to\s+approve|to\s+complete)\b|\buse\s+otp\b|\bvalid\s+for\s+\d+\s*min|\bexpires\s+in\s+\d+\s*min)/i;
+const CONFIRMED_TXN_RE = /\b(?:debited|credited|spent|withdrawn|sent\s+(?:rs|inr|₹)|paid\s+(?:rs|inr|₹|to)|transfer(?:red)?\s+to|purchase\s+of)\b/i;
+
+function isOtpMessage(body) {
+  if (!body) return false;
+  if (STRICT_OTP_RE.test(body)) return true;
+  if (!CONFIRMED_TXN_RE.test(body) && /\b(?:otp|one[ -]?time password)\b/i.test(body)) return true;
+  return false;
+}
 
 /**
  * Store raw, mark pending. Parsing NEVER happens inside the request — the
@@ -21,7 +29,7 @@ async function ingestBatch({ userId, deviceId, source = 'sms', messages = [] }) 
     maxDate = Math.max(maxDate, receivedAtMs);
 
     // Belt-and-braces: the phone filter already excluded these (§3.3/§9).
-    if (!msg.body || OTP_RE.test(msg.body)) { rejected++; continue; }
+    if (!msg.body || isOtpMessage(msg.body)) { rejected++; continue; }
 
     try {
       await RawMessage.create({
