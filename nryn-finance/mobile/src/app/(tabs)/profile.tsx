@@ -27,9 +27,12 @@ export default function Profile() {
       if (p.phase === 'error') {
         Alert.alert('Sync Error', p.error || 'Failed to scan SMS inbox');
       } else {
+        const rej = Object.entries(p.rejected || {})
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(', ');
         Alert.alert(
           'Sync finished',
-          `Total SMS read: ${p.read}\nBank messages found: ${p.kept}\nUploaded: ${p.uploaded}\nDuplicates: ${p.duplicates}`,
+          `Total SMS read: ${p.read}\nBank messages found: ${p.kept}\nUploaded: ${p.uploaded}\nDuplicates: ${p.duplicates}${rej ? `\n(Filtered: ${rej})` : ''}`,
         );
       }
     } catch (e: any) {

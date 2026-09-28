@@ -10,33 +10,40 @@
  *   a false negative silently loses a transaction you will never notice.
  */
 
-// Gate 1 — DLT sender header: AD-HDFCBK, VM-ICICIB, JD-SBIUPI, AD-SBI, PAYTM, CRED, GPAY…
-// Supports 2-character operator prefix (optional hyphen) + 3–10 alphanumeric chars,
-// or standalone 3–10 char headers, while strictly rejecting personal phone numbers.
+// Gate 1 — DLT sender header: AD-HDFCBK, AD-HDFCBK-S, VM-ICICIB-T, JD-SBIUPI, AD-SBI-S, BP-MAHABK-S, PAYTM, CRED, GPAY…
+// Distinguish enterprise/bank TRAI headers from personal mobile phone numbers.
 export function isBankSender(sender: string): boolean {
   if (!sender) return false;
-  const s = sender.trim().replace(/^\+91/, '').replace(/^91(?=[A-Za-z]{2}-)/, '');
-  // Reject personal phone numbers (+9198..., 9876543210, etc.)
-  if (/^\+?\d{7,15}$/.test(s)) return false;
-  // Match TRAI DLT headers: e.g. AD-SBI, VM-HDFCBK, VK-PAYTM or HDFCBK, SBI, PAYTM, CRED
-  return /^(?:[A-Za-z]{2}-?)?[A-Za-z0-9]{3,10}$/.test(s);
+  const s = String(sender).trim();
+  // Reject personal phone numbers (+9198..., 9876543210, +1 555..., etc.)
+  const digitsOnly = s.replace(/[\s\-+()]/g, '');
+  if (/^\d{10,15}$/.test(digitsOnly)) return false;
+
+  // Any DLT header / bank name has at least 2 letters (e.g. AD-SBI, AD-SBI-S, HDFCBK, MAHABK, PAYTM)
+  const letters = s.replace(/[^A-Za-z]/g, '');
+  if (letters.length >= 2) return true;
+
+  // 3-6 digit bank / service shortcodes (e.g. 567676, 561616)
+  if (/^\d{3,6}$/.test(digitsOnly)) return true;
+
+  return false;
 }
 
-// Gate 2 — a rupee amount is present.
-const AMOUNT_RE = /(?:rs\.?|inr|₹)\s?[\d,]+(?:\.\d{1,2})?/i;
+// Gate 2 — a rupee amount is present (supports Rs, INR, ₹, रु).
+const AMOUNT_RE = /(?:rs\.?|inr|₹|रु\.?)\s*[\d,]+(?:\.\d{1,2})?/i;
 
-// Some banks omit the currency: "debited by 180.0".
-const BARE_AMOUNT_RE = /\b(?:debited|credited|spent|paid|sent|withdrawn)\s+(?:by|for|with|of)?\s*[\d,]+(?:\.\d{1,2})?\b/i;
+// Some banks omit the currency: "debited by 180.0", "debited for 500", "नावे 200".
+const BARE_AMOUNT_RE = /\b(?:debited|credited|debit|credit|spent|paid|sent|withdrawn|transferred|trf|naave|jama|नावे|जमा)\s+(?:by|for|with|of)?\s*[\d,]+(?:\.\d{1,2})?\b/i;
 
 // Gate 3 — transactional vocabulary.
-const TXN_RE = /debited|credited|spent|paid|received|withdrawn|txn|upi|a\/c|card ending|purchase|sent\s+rs/i;
+const TXN_RE = /\b(?:debit(?:ed)?|credit(?:ed)?|spent|paid|pay(?:ment)?|received|withdrawn|withdraw(?:al)?|txn|trans(?:action)?|transferred|transfer|trf|upi|imps|neft|rtgs|a\/c|acct?|account|card(?:\s+ending|\s+no)?|purchase|sent|deposited|refund|naave|jama|नावे|जमा|खाते)\b/i;
 
 // Gate 4 — NOT an OTP or promo.
 // Mandatory safety warnings (e.g. "Never share your OTP/PIN", "If not you click here")
 // are appended by RBI regulation to legitimate debit SMS. We must ONLY exclude if
-// it is an actual OTP authorization message or marketing offer.
-const CONFIRMED_TXN_RE = /\b(?:debited|credited|spent|withdrawn|sent\s+(?:rs|inr|₹)|paid\s+(?:rs|inr|₹|to)|transfer(?:red)?\s+to|purchase\s+of)\b/i;
-const STRICT_OTP_RE = /(?:is\s+(?:your\s+|the\s+)?otp\b|\botp\s+(?:is|to\s+approve|to\s+complete)\b|\buse\s+otp\b|\bvalid\s+for\s+\d+\s*min|\bexpires\s+in\s+\d+\s*min)/i;
+// it is an actual OTP authorization prompt or loan/promo offer.
+const CONFIRMED_TXN_RE = /\b(?:debited|credited|spent|withdrawn|sent\s+(?:rs|inr|₹|रु)|paid\s+(?:rs|inr|₹|रु|to)|transfer(?:red)?\s+to|purchase\s+of|debit\s+of|naave|नावे|जमा)\b/i;
+const STRICT_OTP_RE = /(?:is\s+(?:your\s+|the\s+)?otp\b|\botp\s+(?:is|to\s+approve|to\s+complete|for\s+(?:login|transaction|payment|verification)|sent\s+to)\b|\buse\s+otp\b|\bsecret\s+otp\b|\blogin\s+otp\b|\bvalid\s+for\s+\d+\s*min|\bexpires\s+in\s+\d+\s*min|\bone[- ]time\s+password\s+(?:is|to))/i;
 const PROMO_RE = /\b(?:pre-?approved\s+(?:loan|offer|card|limit)|apply\s+now|avail\s+loan|get\s+instant\s+loan|loan\s+(?:offer|upto|up\s+to)|emi\s+offer|congratulations\s+you\s+are\s+eligible)\b/i;
 
 export function isExcluded(body: string): boolean {

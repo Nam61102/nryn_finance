@@ -53,6 +53,8 @@ export default function Home() {
       const p = await syncSms(); // pull-to-refresh does a REAL SMS sync
       if (p.phase === 'error') {
         Alert.alert('Sync issue', p.error || 'Failed to read SMS');
+      } else if (p.uploaded > 0) {
+        Alert.alert('Sync Complete', `Synced ${p.uploaded} new transaction(s)!`);
       }
     } catch (e: any) {
       Alert.alert('Sync error', e?.message || 'Failed to sync');

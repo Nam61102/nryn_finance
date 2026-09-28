@@ -38,6 +38,19 @@ export default function Onboarding() {
       );
       return;
     }
+    if (res.kept === 0) {
+      const breakdown = Object.entries(res.rejected || {})
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(', ');
+      Alert.alert(
+        'Scan Finished',
+        `Read ${res.read} messages, but 0 bank transaction messages were identified (${breakdown}). You can add expenses manually or pull down to refresh anytime.`,
+        [
+          { text: 'Continue to Dashboard', onPress: () => { markBackfillDone(); router.replace('/(tabs)'); } },
+        ],
+      );
+      return;
+    }
     await markBackfillDone();
     router.replace('/(tabs)');
   };

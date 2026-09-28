@@ -70,11 +70,15 @@ export async function syncSms(opts: Opts = {}): Promise<SyncProgress> {
 
   let indexFrom = 0;
   let pending: RawSms[] = [];
-
   try {
     // Read the inbox in pages, checkpointing after every upload.
-    for (;;) {
-      const page = await listInbox({ minDate: cursor + 1, indexFrom, maxCount: 500 });
+    const maxScan = opts.full ? 3000 : 1000;
+    while (progress.read < maxScan) {
+      const queryOpts: any = { indexFrom, maxCount: 500 };
+      if (!opts.full && cursor > 0) {
+        queryOpts.minDate = cursor + 1;
+      }
+      const page = await listInbox(queryOpts);
       if (!page.length) break;
 
       progress.read += page.length;

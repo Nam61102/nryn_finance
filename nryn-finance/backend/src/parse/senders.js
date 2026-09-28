@@ -21,6 +21,8 @@ const BANK_BY_TOKEN = {
   INDUSB: 'IndusInd', INDUS: 'IndusInd',
   YESBNK: 'Yes Bank', YES: 'Yes Bank',
   AUBANK: 'AU Bank', RBLBNK: 'RBL Bank', FEDBNK: 'Federal Bank',
+  MAHABK: 'Bank of Maharashtra', BOMBNK: 'Bank of Maharashtra', BOM: 'Bank of Maharashtra',
+  SRSWAT: 'Saraswat Bank', SARASWAT: 'Saraswat Bank',
   PAYTM: 'Paytm', PAYTMB: 'Paytm', PYTMPB: 'Paytm',
   GPAY: 'Google Pay', GPAYIN: 'Google Pay',
   PHONPE: 'PhonePe', PHONEPE: 'PhonePe',
@@ -28,12 +30,14 @@ const BANK_BY_TOKEN = {
   BHIM: 'BHIM', BHIMPE: 'BHIM',
 };
 
-/** 'AD-HDFCBK' / 'VM-ICICIB' / 'AD-SBI' / 'JD-SBIUPI' → 'HDFCBK' / 'SBI' */
+/** 'AD-HDFCBK-S' / 'VM-ICICIB-T' / 'AD-SBI' / 'JD-SBIUPI' → 'HDFCBK' / 'SBI' */
 function senderToken(sender) {
   if (!sender) return null;
   const s = String(sender).toUpperCase().replace(/[^A-Z0-9-]/g, '');
-  const m = s.match(/(?:^|-)([A-Z0-9]{3,10})$/);
-  return m ? m[1] : (/^[A-Z0-9]{3,10}$/.test(s) ? s : null);
+  // Strip trailing TRAI single-letter suffix like -S (Service), -T (Transactional), -P (Promotional)
+  const clean = s.replace(/-[A-Z]$/, '');
+  const m = clean.match(/(?:^|-)([A-Z0-9]{3,10})$/);
+  return m ? m[1] : (/^[A-Z0-9]{3,10}$/.test(clean) ? clean : null);
 }
 
 const bankFor = (sender) => BANK_BY_TOKEN[senderToken(sender)] || null;
