@@ -11,7 +11,8 @@
     "build:dev": "eas build --profile development --platform android",
     "lint": "tsc --noEmit",
     "test:filter": "node --experimental-strip-types --test tests/*.test.ts",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "ios": "expo run:ios"
   },
   "dependencies": {
     "expo": "~52.0.0",

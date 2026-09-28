@@ -25,9 +25,14 @@ export default function Onboarding() {
   };
 
   if (!isSupported()) {
-    const why = Platform.OS === 'web'
-      ? 'A browser cannot read SMS. This web view is for looking at your dashboard — add expenses with the + button, or use the Android app for automatic SMS capture.'
-      : "Apple gives no app access to the SMS inbox, by any method. On iOS this app works from Gmail and manual entries only — which covers cards and bills, but not same-day UPI spends.";
+    let why = '';
+    if (Platform.OS === 'web') {
+      why = 'A browser cannot read SMS. This web view is for looking at your dashboard — add expenses with the + button, or use the Android app for automatic SMS capture.';
+    } else if (Platform.OS === 'android') {
+      why = 'Native SMS module is not detected. Please ensure you are running a custom development or standalone Android build (Expo Go cannot read SMS).';
+    } else {
+      why = "Apple gives no app access to the SMS inbox, by any method. On iOS this app works from Gmail and manual entries only — which covers cards and bills, but not same-day UPI spends.";
+    }
     return (
       <View style={styles.wrap}>
         <Text style={styles.h1}>No SMS access here</Text>
