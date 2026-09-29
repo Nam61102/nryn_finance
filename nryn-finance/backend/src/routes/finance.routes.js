@@ -28,7 +28,33 @@ router.get('/budgets/status', budget.getStatus);
 router.patch('/budgets/:id', budget.patchBudget);
 router.delete('/budgets/:id', budget.deleteBudget);
 
-router.get('/alerts', budget.listAlerts);
-router.patch('/alerts/:id/read', budget.readAlert);
+const hub = require('../finance/hub.controller');
+
+// ── Smart Financial Hub & AI Document Analysis ──
+router.post('/ai/analyze-document', hub.analyzeDocument);
+router.post('/finance/ai/analyze-document', hub.analyzeDocument);
+router.post('/ai/statement-import', hub.importStatementTransactions);
+router.post('/finance/ai/statement-import', hub.importStatementTransactions);
+
+// ── Insurance & Policies ──
+router.get('/policies', hub.listPolicies);
+router.get('/finance/policies', hub.listPolicies);
+router.post('/policies', hub.createPolicy);
+router.post('/finance/policies', hub.createPolicy);
+router.delete('/policies/:id', hub.deletePolicy);
+router.delete('/finance/policies/:id', hub.deletePolicy);
+
+// ── Accounts (Savings & Loans) ──
+router.get('/accounts', hub.listAccounts);
+router.get('/finance/accounts', hub.listAccounts);
+router.post('/accounts', hub.createAccount);
+router.post('/finance/accounts', hub.createAccount);
+router.delete('/accounts/:id', hub.deleteAccount);
+router.delete('/finance/accounts/:id', hub.deleteAccount);
+
+// ── Cash Expense Fast Entry ──
+router.post('/cash-expense', hub.createCashExpense);
+router.post('/finance/cash-expense', hub.createCashExpense);
 
 module.exports = router;
+

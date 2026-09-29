@@ -60,6 +60,33 @@ export const api = {
   },
   categories: () => request<{ categories: any[] }>('/categories'),
   health: () => fetch(`${API_BASE}/api/health`).then((r) => r.json()),
+
+  // Financial Hub & AI Document Scanning
+  analyzeDocument: (data: { type: string; text?: string; fileName?: string; fileBase64?: string }) =>
+    request<{ ok: boolean; source: string; type: string; data: any }>('/ai/analyze-document', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  importStatement: (data: { transactions: any[]; bankName?: string; accountMasked?: string }) =>
+    request<{ ok: boolean; importedCount: number; message: string }>('/ai/statement-import', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+
+  // Policies / Insurance
+  getPolicies: () => request<{ policies: any[] }>('/policies'),
+  createPolicy: (policy: any) => request<{ ok: boolean; policy: any }>('/policies', { method: 'POST', body: JSON.stringify(policy) }),
+  deletePolicy: (id: string) => request<{ ok: boolean }>(`/policies/${id}`, { method: 'DELETE' }),
+
+  // Accounts (Savings & Loans)
+  getAccounts: () =>
+    request<{ accounts: any[]; savings: any[]; loans: any[]; summary: any }>('/accounts'),
+  createAccount: (acc: any) => request<{ ok: boolean; account: any }>('/accounts', { method: 'POST', body: JSON.stringify(acc) }),
+  deleteAccount: (id: string) => request<{ ok: boolean }>(`/accounts/${id}`, { method: 'DELETE' }),
+
+  // Cash Expense
+  createCashExpense: (expense: { amount: number; merchantName?: string; note?: string; category?: string; occurredAt?: string }) =>
+    request<{ ok: boolean; transaction: any }>('/cash-expense', { method: 'POST', body: JSON.stringify(expense) }),
 };
 
 export const rupees = (paise: number) => (paise || 0) / 100;

@@ -15,7 +15,7 @@ const RawMessage = require('./src/db/models/RawMessage');
 const app = express();
 app.use(helmet());
 app.use(cors({ origin: env.corsOrigins.length ? env.corsOrigins : true, credentials: true }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '10mb' }));
 app.use(morgan(env.logLevel));
 
 /**
