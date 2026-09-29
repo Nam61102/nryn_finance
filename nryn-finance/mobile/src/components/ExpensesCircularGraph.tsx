@@ -9,6 +9,7 @@ export type SortKey = 'amount_desc' | 'amount_asc' | 'date_desc' | 'date_asc';
 export interface SortOption {
   key: SortKey;
   label: string;
+  marathiLabel: string;
   icon: string;
   color: string;
   sublabel: string;
@@ -22,6 +23,7 @@ export const SORT_OPTIONS: SortOption[] = [
   {
     key: 'amount_desc',
     label: 'Highest',
+    marathiLabel: 'खर्च जास्त',
     icon: '💎',
     color: '#FF4757', // Ruby / Crimson Red (like reference image)
     sublabel: 'Max spend',
@@ -31,6 +33,7 @@ export const SORT_OPTIONS: SortOption[] = [
   {
     key: 'date_desc',
     label: 'Newest',
+    marathiLabel: 'नवीन',
     icon: '⚡',
     color: '#38BDF8', // Sky Blue (like reference image)
     sublabel: 'Latest first',
@@ -40,6 +43,7 @@ export const SORT_OPTIONS: SortOption[] = [
   {
     key: 'amount_asc',
     label: 'Lowest',
+    marathiLabel: 'खर्च कमी',
     icon: '🪙',
     color: '#10B981', // Mint / Emerald Green (like reference image)
     sublabel: 'Min spend',
@@ -49,6 +53,7 @@ export const SORT_OPTIONS: SortOption[] = [
   {
     key: 'date_asc',
     label: 'Oldest',
+    marathiLabel: 'जुने',
     icon: '⏳',
     color: '#6366F1', // Slate Navy / Indigo (like reference image)
     sublabel: 'Earliest first',
@@ -222,6 +227,7 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
               <Text style={[styles.cardLabel, isActive && { color: theme.text, fontWeight: '800' }]}>
                 {opt.label}
               </Text>
+              <Text style={styles.cardMarathiLabel}>{opt.marathiLabel}</Text>
               <Text style={[styles.cardSublabel, isActive && { color: opt.color }]}>
                 {getStatForOption(opt.key)}
               </Text>
@@ -234,7 +240,7 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
       <View style={[styles.summaryBar, { borderColor: `${activeOption.color}35`, backgroundColor: `${activeOption.color}10` }]}>
         <View style={[styles.summaryBullet, { backgroundColor: activeOption.color }]} />
         <Text style={styles.summaryText}>
-          Showing <Text style={{ color: activeOption.color, fontWeight: '700' }}>{activeOption.label}</Text> expenses below:
+          Showing <Text style={{ color: activeOption.color, fontWeight: '700' }}>{activeOption.label}</Text> ({activeOption.marathiLabel}) expenses below:
         </Text>
       </View>
     </View>
@@ -247,9 +253,14 @@ const styles = StyleSheet.create({
     marginHorizontal: 16,
     marginTop: 18,
     borderRadius: 22,
-    padding: 16,
+    padding: 18,
     borderWidth: 1,
     borderColor: theme.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    elevation: 2,
   },
   headerRow: {
     flexDirection: 'row',
@@ -267,8 +278,8 @@ const styles = StyleSheet.create({
   },
   headerTitle: {
     color: theme.text,
-    fontSize: 15,
-    fontWeight: '700',
+    fontSize: 16,
+    fontWeight: '800',
   },
   activeBadge: {
     paddingHorizontal: 10,
@@ -297,7 +308,7 @@ const styles = StyleSheet.create({
     padding: 8,
   },
   centerIcon: {
-    fontSize: 20,
+    fontSize: 22,
     marginBottom: 1,
   },
   centerTitle: {
@@ -307,13 +318,14 @@ const styles = StyleSheet.create({
   },
   centerStat: {
     color: theme.text,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 13,
+    fontWeight: '800',
     marginTop: 2,
   },
   centerActionHint: {
     color: theme.textDim,
     fontSize: 9,
+    fontWeight: '600',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
     marginTop: 2,
@@ -326,11 +338,16 @@ const styles = StyleSheet.create({
   },
   quadrantCard: {
     width: '48%',
-    backgroundColor: theme.cardAlt,
+    backgroundColor: theme.card,
     borderRadius: 14,
     padding: 12,
     borderWidth: 1,
     borderColor: theme.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
   cardTopRow: {
     flexDirection: 'row',
@@ -347,9 +364,14 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   cardLabel: {
-    color: theme.textDim,
+    color: theme.text,
     fontSize: 13,
-    fontWeight: '600',
+    fontWeight: '700',
+  },
+  cardMarathiLabel: {
+    color: theme.textDim,
+    fontSize: 10,
+    marginTop: 1,
   },
   cardSublabel: {
     color: theme.textDim,
@@ -362,9 +384,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 8,
     marginTop: 14,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
     borderWidth: 1,
   },
   summaryBullet: {

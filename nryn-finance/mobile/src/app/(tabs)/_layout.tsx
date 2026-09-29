@@ -9,10 +9,22 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarStyle: { backgroundColor: theme.card, borderTopColor: theme.border, height: 64, paddingBottom: 8, paddingTop: 8 },
+        tabBarStyle: {
+          backgroundColor: theme.card,
+          borderTopColor: theme.border,
+          borderTopWidth: 1,
+          height: 64,
+          paddingBottom: 8,
+          paddingTop: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.05,
+          shadowRadius: 8,
+          elevation: 6,
+        },
         tabBarActiveTintColor: theme.accent,
         tabBarInactiveTintColor: theme.textDim,
-        tabBarLabelStyle: { fontSize: 11 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: '600' },
       }}
     >
       <Tabs.Screen name="index" options={{ title: 'Home', tabBarIcon: ({ color }) => <Text style={{ color, fontSize: 18 }}>🏠</Text> }} />
@@ -36,6 +48,18 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   fabWrap: { flex: 1, alignItems: 'center', justifyContent: 'center' },
-  fab: { width: 54, height: 54, borderRadius: 27, backgroundColor: theme.accent, alignItems: 'center', justifyContent: 'center', marginTop: -22, shadowColor: theme.accent, shadowOpacity: 0.5, shadowRadius: 12, elevation: 8 },
-  fabText: { color: '#0B0F0D', fontSize: 30, fontWeight: '700', marginTop: -3 },
+  fab: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: theme.accent,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: -22,
+    shadowColor: theme.accent,
+    shadowOpacity: 0.45,
+    shadowRadius: 10,
+    elevation: 8,
+  },
+  fabText: { color: '#FFFFFF', fontSize: 30, fontWeight: '700', marginTop: -3 },
 });

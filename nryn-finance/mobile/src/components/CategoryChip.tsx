@@ -18,7 +18,7 @@ export default function CategoryChip({ chip, onPress }: { chip: Chip; onPress?: 
       <Text style={styles.label} numberOfLines={1}>{chip.label}</Text>
       <View style={{ width: size, height: size, marginVertical: 6 }}>
         <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-          <Circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(255,255,255,0.10)" strokeWidth={stroke} fill="none" />
+          <Circle cx={size / 2} cy={size / 2} r={r} stroke={theme.border} strokeWidth={stroke} fill="none" />
           <Circle cx={size / 2} cy={size / 2} r={r} stroke={color} strokeWidth={stroke} fill="none" strokeLinecap="round" strokeDasharray={c} strokeDashoffset={c * (1 - chip.ratio)} />
         </Svg>
         <View style={styles.iconWrap}>
@@ -33,9 +33,24 @@ export default function CategoryChip({ chip, onPress }: { chip: Chip; onPress?: 
 }
 
 const styles = StyleSheet.create({
-  wrap: { width: 96, alignItems: 'center', backgroundColor: theme.card, borderRadius: 16, paddingVertical: 12, paddingHorizontal: 8, marginRight: 10 },
+  wrap: {
+    width: 96,
+    alignItems: 'center',
+    backgroundColor: theme.card,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 8,
+    marginRight: 10,
+    borderWidth: 1,
+    borderColor: theme.border,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
+  },
   iconWrap: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  label: { color: theme.text, fontSize: 12, fontWeight: '600' },
-  amount: { color: theme.text, fontSize: 13, fontWeight: '700' },
-  sub: { color: theme.textDim, fontSize: 10 },
+  label: { color: theme.text, fontSize: 12, fontWeight: '700' },
+  amount: { color: theme.text, fontSize: 13, fontWeight: '800' },
+  sub: { color: theme.textDim, fontSize: 10, marginTop: 1 },
 });

@@ -31,7 +31,7 @@ export default function BudgetRing({ total, spent, remaining, ratio, over, size 
     <View style={{ alignItems: 'center' }}>
       <View style={{ width: size, height: size }}>
         <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-          <Circle cx={size / 2} cy={size / 2} r={r} stroke="rgba(255,255,255,0.10)" strokeWidth={stroke} fill="none" />
+          <Circle cx={size / 2} cy={size / 2} r={r} stroke={theme.border} strokeWidth={stroke} fill="none" />
           <AnimatedCircle
             cx={size / 2} cy={size / 2} r={r}
             stroke={color} strokeWidth={stroke} fill="none" strokeLinecap="round"
