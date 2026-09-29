@@ -2,7 +2,6 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import Svg, { Path, G } from 'react-native-svg';
 import { theme } from '../theme';
-import { formatINR } from '../services/api';
 
 export type SortKey = 'amount_desc' | 'amount_asc' | 'date_desc' | 'date_asc';
 
@@ -24,7 +23,7 @@ export const SORT_OPTIONS: SortOption[] = [
     label: 'Highest',
     icon: '💎',
     color: '#FF4757', // Ruby / Crimson Red (like reference image)
-    sublabel: 'Max spend',
+    sublabel: 'Highest first',
     startAngle: 0,
     endAngle: 90,
   },
@@ -42,7 +41,7 @@ export const SORT_OPTIONS: SortOption[] = [
     label: 'Lowest',
     icon: '🪙',
     color: '#10B981', // Mint / Emerald Green (like reference image)
-    sublabel: 'Min spend',
+    sublabel: 'Lowest first',
     startAngle: 180,
     endAngle: 270,
   },
@@ -110,24 +109,11 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
   const defaultRInner = 48;
   const defaultROuter = 82;
 
-  // Compute max and min from current transactions
-  const expenseAmounts = txns.filter((t) => t.amount > 0).map((t) => t.amount);
-  const maxPaise = expenseAmounts.length > 0 ? Math.max(...expenseAmounts) : 0;
-  const minPaise = expenseAmounts.length > 0 ? Math.min(...expenseAmounts) : 0;
-
   const activeOption = SORT_OPTIONS.find((s) => s.key === currentSort) || SORT_OPTIONS[0];
 
   const getStatForOption = (key: SortKey) => {
-    switch (key) {
-      case 'amount_desc':
-        return maxPaise > 0 ? `Max ${formatINR(maxPaise)}` : 'Top spend';
-      case 'amount_asc':
-        return minPaise > 0 ? `Min ${formatINR(minPaise)}` : 'Low spend';
-      case 'date_desc':
-        return 'Latest date';
-      case 'date_asc':
-        return 'Earliest date';
-    }
+    const opt = SORT_OPTIONS.find((s) => s.key === key);
+    return opt?.sublabel ?? '';
   };
 
   return (
