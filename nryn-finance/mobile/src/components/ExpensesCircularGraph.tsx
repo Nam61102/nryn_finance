@@ -9,7 +9,6 @@ export type SortKey = 'amount_desc' | 'amount_asc' | 'date_desc' | 'date_asc';
 export interface SortOption {
   key: SortKey;
   label: string;
-  marathiLabel: string;
   icon: string;
   color: string;
   sublabel: string;
@@ -23,7 +22,6 @@ export const SORT_OPTIONS: SortOption[] = [
   {
     key: 'amount_desc',
     label: 'Highest',
-    marathiLabel: 'खर्च जास्त',
     icon: '💎',
     color: '#FF4757', // Ruby / Crimson Red (like reference image)
     sublabel: 'Max spend',
@@ -33,7 +31,6 @@ export const SORT_OPTIONS: SortOption[] = [
   {
     key: 'date_desc',
     label: 'Newest',
-    marathiLabel: 'नवीन',
     icon: '⚡',
     color: '#38BDF8', // Sky Blue (like reference image)
     sublabel: 'Latest first',
@@ -43,7 +40,6 @@ export const SORT_OPTIONS: SortOption[] = [
   {
     key: 'amount_asc',
     label: 'Lowest',
-    marathiLabel: 'खर्च कमी',
     icon: '🪙',
     color: '#10B981', // Mint / Emerald Green (like reference image)
     sublabel: 'Min spend',
@@ -53,7 +49,6 @@ export const SORT_OPTIONS: SortOption[] = [
   {
     key: 'date_asc',
     label: 'Oldest',
-    marathiLabel: 'जुने',
     icon: '⏳',
     color: '#6366F1', // Slate Navy / Indigo (like reference image)
     sublabel: 'Earliest first',
@@ -227,8 +222,7 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
               <Text style={[styles.cardLabel, isActive && { color: theme.text, fontWeight: '800' }]}>
                 {opt.label}
               </Text>
-              <Text style={styles.cardMarathiLabel}>{opt.marathiLabel}</Text>
-              <Text style={[styles.cardSublabel, isActive && { color: opt.color }]}>
+              <Text style={[styles.cardSublabel, isActive && { color: opt.color, fontWeight: '800' }]}>
                 {getStatForOption(opt.key)}
               </Text>
             </TouchableOpacity>
@@ -240,7 +234,7 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
       <View style={[styles.summaryBar, { borderColor: `${activeOption.color}35`, backgroundColor: `${activeOption.color}10` }]}>
         <View style={[styles.summaryBullet, { backgroundColor: activeOption.color }]} />
         <Text style={styles.summaryText}>
-          Showing <Text style={{ color: activeOption.color, fontWeight: '700' }}>{activeOption.label}</Text> ({activeOption.marathiLabel}) expenses below:
+          Showing <Text style={{ color: activeOption.color, fontWeight: '700' }}>{activeOption.label}</Text> expenses below:
         </Text>
       </View>
     </View>
@@ -367,11 +361,6 @@ const styles = StyleSheet.create({
     color: theme.text,
     fontSize: 13,
     fontWeight: '700',
-  },
-  cardMarathiLabel: {
-    color: theme.textDim,
-    fontSize: 10,
-    marginTop: 1,
   },
   cardSublabel: {
     color: theme.textDim,
