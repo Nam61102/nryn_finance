@@ -12,8 +12,9 @@ import {
 import { router } from 'expo-router';
 import { api, formatINR } from '../services/api';
 import { theme, FALLBACK_CATEGORIES } from '../theme';
+import AiRecommendationsCard from '../components/AiRecommendationsCard';
 
-type HubTab = 'statement' | 'insurance' | 'account' | 'cash';
+type HubTab = 'statement' | 'insurance' | 'account' | 'cash' | 'advice';
 type InsuranceType = 'health' | 'car' | 'medical' | 'life' | 'other';
 type AccountMode = 'savings' | 'loan';
 
@@ -369,6 +370,16 @@ export default function FinancialHubAdd() {
         >
           <Text style={[styles.tabText, activeTab === 'cash' && styles.tabTextActive]}>
             💵 Cash
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tabItem, activeTab === 'advice' && styles.tabItemActive]}
+          onPress={() => setActiveTab('advice')}
+          activeOpacity={0.8}
+        >
+          <Text style={[styles.tabText, activeTab === 'advice' && styles.tabTextActive]}>
+            💡 Advice
           </Text>
         </TouchableOpacity>
       </View>
@@ -834,6 +845,15 @@ export default function FinancialHubAdd() {
               <Text style={styles.primaryBtnText}>💵 Record Cash Expense</Text>
             )}
           </TouchableOpacity>
+        </View>
+      )}
+
+      {/* ───────────────────────────────────────────────────────────── */}
+      {/* TAB 5: AI FINANCIAL RECOMMENDATIONS & ADVISORY              */}
+      {/* ───────────────────────────────────────────────────────────── */}
+      {activeTab === 'advice' && (
+        <View>
+          <AiRecommendationsCard />
         </View>
       )}
     </ScrollView>

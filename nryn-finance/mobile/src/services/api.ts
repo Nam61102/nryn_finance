@@ -87,6 +87,10 @@ export const api = {
   // Cash Expense
   createCashExpense: (expense: { amount: number; merchantName?: string; note?: string; category?: string; occurredAt?: string }) =>
     request<{ ok: boolean; transaction: any }>('/cash-expense', { method: 'POST', body: JSON.stringify(expense) }),
+
+  // AI Smart Recommendations
+  getRecommendations: () =>
+    request<{ ok: boolean; count: number; recommendations: any[] }>('/ai/recommendations'),
 };
 
 export const rupees = (paise: number) => (paise || 0) / 100;

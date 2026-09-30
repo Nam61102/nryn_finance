@@ -56,5 +56,9 @@ router.delete('/finance/accounts/:id', hub.deleteAccount);
 router.post('/cash-expense', hub.createCashExpense);
 router.post('/finance/cash-expense', hub.createCashExpense);
 
+// ── AI Recommendations & Financial Advisory ──
+router.get('/ai/recommendations', hub.getRecommendations);
+router.get('/finance/ai/recommendations', hub.getRecommendations);
+
 module.exports = router;
 

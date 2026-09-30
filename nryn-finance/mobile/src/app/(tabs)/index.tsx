@@ -9,6 +9,7 @@ import CategoryChip from '../../components/CategoryChip';
 import ExpenseRow from '../../components/ExpenseRow';
 import PaceBanner from '../../components/PaceBanner';
 import ExpensesCircularGraph from '../../components/ExpensesCircularGraph';
+import AiRecommendationsCard from '../../components/AiRecommendationsCard';
 
 
 
@@ -179,6 +180,8 @@ export default function Home() {
           ))}
         </ScrollView>
       )}
+
+      <AiRecommendationsCard />
 
       <ExpensesCircularGraph
         currentSort={sort}
