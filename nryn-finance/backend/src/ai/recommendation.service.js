@@ -134,7 +134,7 @@ async function generateRecommendations(userId) {
   }
 
   // ── RULE 3: Insurance & Protection Gap Analysis ──
-  if (healthPolicies.length === 0) {
+  if (healthPolicies.length === 0 && (savingsAccounts.length > 0 || currentSpentPaise > 0)) {
     recommendations.push({
       id: 'rec_health_gap',
       category: 'insurance',
@@ -147,7 +147,7 @@ async function generateRecommendations(userId) {
       actionLabel: 'Upload Health Policy',
       actionRoute: '/add'
     });
-  } else {
+  } else if (healthPolicies.length > 0) {
     // Check if any policy expires in next 45 days
     const upcomingExpiry = policies.find(p => {
       if (!p.expiryDate) return false;
@@ -173,23 +173,26 @@ async function generateRecommendations(userId) {
   }
 
   // ── RULE 4: Emergency Fund & Cash Flow Health ──
-  const monthlyBurn = currentSpentPaise > 0 ? currentSpentPaise : (lastSpentPaise > 0 ? lastSpentPaise : 2500000);
-  const emergencyCoverageMonths = totalSavingsPaise > 0 ? (totalSavingsPaise / monthlyBurn).toFixed(1) : 0;
+  const monthlyBurn = currentSpentPaise > 0 ? currentSpentPaise : lastSpentPaise;
 
-  if (emergencyCoverageMonths < 3) {
-    const targetBufferRupees = Math.round((monthlyBurn * 3) / 100);
-    recommendations.push({
-      id: 'rec_emergency_fund',
-      category: 'savings',
-      tag: 'FINANCIAL SHIELD',
-      tagColor: '#10B981',
-      icon: '💰',
-      title: 'Build 3-Month Emergency Buffer',
-      impact: `Target: ₹${targetBufferRupees.toLocaleString('en-IN')}`,
-      explanation: `Your liquid savings currently cover ~${emergencyCoverageMonths} months of expenses. Financial experts recommend keeping at least 3 months in high-yield savings or liquid funds.`,
-      actionLabel: 'Check Savings Account',
-      actionRoute: '/add'
-    });
+  if (monthlyBurn > 0) {
+    const emergencyCoverageMonths = totalSavingsPaise > 0 ? (totalSavingsPaise / monthlyBurn).toFixed(1) : '0.0';
+
+    if (Number(emergencyCoverageMonths) < 3) {
+      const targetBufferRupees = Math.round((monthlyBurn * 3) / 100);
+      recommendations.push({
+        id: 'rec_emergency_fund',
+        category: 'savings',
+        tag: 'FINANCIAL SHIELD',
+        tagColor: '#10B981',
+        icon: '💰',
+        title: 'Build 3-Month Emergency Buffer',
+        impact: `Target: ₹${targetBufferRupees.toLocaleString('en-IN')}`,
+        explanation: `Your liquid savings currently cover ~${emergencyCoverageMonths} months of expenses. Financial experts recommend keeping at least 3 months in high-yield savings or liquid funds.`,
+        actionLabel: 'Check Savings Account',
+        actionRoute: '/add'
+      });
+    }
   }
 
   // ── RULE 5: Month-over-Month Spending Velocity ──
@@ -224,36 +227,6 @@ async function generateRecommendations(userId) {
       actionLabel: 'Set Savings Goal',
       actionRoute: '/(tabs)/budgets'
     });
-  }
-
-  // If no recommendations triggered (e.g. fresh user), supply high-value starter recommendations
-  if (recommendations.length === 0) {
-    recommendations.push(
-      {
-        id: 'rec_starter_statement',
-        category: 'spend',
-        tag: 'INSTANT SCAN',
-        tagColor: '#38BDF8',
-        icon: '📑',
-        title: 'Upload Bank Statement for AI Spend Audit',
-        impact: 'Gain 100% visibility over subscriptions & charges',
-        explanation: 'Upload your PDF or image statement in Financial Hub to automatically uncover hidden fees and categorized spending.',
-        actionLabel: 'Scan Statement',
-        actionRoute: '/add'
-      },
-      {
-        id: 'rec_starter_insurance',
-        category: 'insurance',
-        tag: 'PROTECTION',
-        tagColor: '#FF6D00',
-        icon: '🛡️',
-        title: 'Secure Your Family with Health Insurance Audit',
-        impact: 'Never miss policy renewals or claim benefits',
-        explanation: 'Add your health, car, or medical policy photo to your digital vault for instant renewal tracking.',
-        actionLabel: 'Add Policy Photo',
-        actionRoute: '/add'
-      }
-    );
   }
 
   return {

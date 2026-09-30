@@ -17,61 +17,10 @@ export interface Recommendation {
   actionRoute: string;
 }
 
-const FALLBACK_RECOMMENDATIONS: Recommendation[] = [
-  {
-    id: 'rec_food_dining',
-    category: 'spend',
-    tag: 'SPENDING LEAKAGE',
-    tagColor: '#FF6D00',
-    icon: '🍔',
-    title: 'Food Delivery & Dining Optimization',
-    impact: 'Save up to ₹2,400/mo',
-    explanation: 'High frequency of weekend delivery orders detected. Setting a weekly dining cap can keep more cash in your wallet.',
-    actionLabel: 'Set Food Budget →',
-    actionRoute: '/(tabs)/budgets',
-  },
-  {
-    id: 'rec_loan_refinance',
-    category: 'loan',
-    tag: 'INTEREST SAVER',
-    tagColor: '#FF4757',
-    icon: '📉',
-    title: 'Personal Loan Refinance Advisory',
-    impact: 'Save ~₹18,400 in interest',
-    explanation: 'Average market rates for balance transfer loans are currently 10.25%. Refinancing high-rate loans will reduce monthly EMI.',
-    actionLabel: 'Check Loan Rates →',
-    actionRoute: '/add',
-  },
-  {
-    id: 'rec_health_gap',
-    category: 'insurance',
-    tag: 'PROTECTION GAP',
-    tagColor: '#FF4757',
-    icon: '🛡️',
-    title: 'Critical Health Insurance Missing',
-    impact: 'Protect up to ₹10 Lakhs in medical emergencies',
-    explanation: 'No health insurance policy found in your vault. Secure your savings against sudden hospital bills with a family cover.',
-    actionLabel: 'Upload Health Policy →',
-    actionRoute: '/add',
-  },
-  {
-    id: 'rec_emergency_fund',
-    category: 'savings',
-    tag: 'FINANCIAL SHIELD',
-    tagColor: '#10B981',
-    icon: '💰',
-    title: 'Build 3-Month Emergency Fund',
-    impact: 'Target buffer: ₹75,000',
-    explanation: 'Keep at least 3 months of basic living expenses in high-yield liquid savings before aggressive investing.',
-    actionLabel: 'View Accounts →',
-    actionRoute: '/add',
-  },
-];
-
 export default function AiRecommendationsCard() {
-  const [recommendations, setRecommendations] = useState<Recommendation[]>(FALLBACK_RECOMMENDATIONS);
+  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
 
   useEffect(() => {
     fetchRecommendations();
@@ -81,11 +30,13 @@ export default function AiRecommendationsCard() {
     try {
       setLoading(true);
       const res = await api.getRecommendations();
-      if (res?.recommendations?.length) {
+      if (res?.recommendations) {
         setRecommendations(res.recommendations);
+      } else {
+        setRecommendations([]);
       }
     } catch {
-      // Use fallback recommendations if offline or network unavailable
+      setRecommendations([]);
     } finally {
       setLoading(false);
     }
@@ -140,6 +91,16 @@ export default function AiRecommendationsCard() {
         <View style={styles.loadingBox}>
           <ActivityIndicator size="small" color={theme.accent} />
           <Text style={styles.loadingText}>AI analyzing financial patterns...</Text>
+        </View>
+      ) : filtered.length === 0 ? (
+        <View style={styles.emptyContainer}>
+          <Text style={styles.emptyEmoji}>💡</Text>
+          <Text style={styles.emptyTitle}>No Recommendations Yet</Text>
+          <Text style={styles.emptyText}>
+            {selectedFilter === 'all'
+              ? 'As you record transactions, upload statements, or add accounts, AI will dynamically generate personalized savings advice here.'
+              : 'No recommendations found for this category.'}
+          </Text>
         </View>
       ) : (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.cardsScroll}>
@@ -339,5 +300,31 @@ const styles = StyleSheet.create({
     color: theme.accent,
     fontSize: 11,
     fontWeight: '800',
+  },
+  emptyContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 18,
+    paddingHorizontal: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  emptyEmoji: {
+    fontSize: 24,
+    marginBottom: 6,
+  },
+  emptyTitle: {
+    color: theme.text,
+    fontSize: 13,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  emptyText: {
+    color: theme.textDim,
+    fontSize: 11,
+    lineHeight: 16,
+    textAlign: 'center',
   },
 });
