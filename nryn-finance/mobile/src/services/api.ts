@@ -145,6 +145,32 @@ export const api = {
       potentialTaxSavingsINR: number;
       actionableTip: string;
     }>('/copilot/tax-radar'),
+  getRecommendations: (month?: string) =>
+    request<{
+      ok: boolean;
+      month: string;
+      count: number;
+      totalSpentINR: number;
+      totalPotentialSavingsINR: number;
+      topMerchants: { name: string; amountINR: number; count: number; category: string }[];
+      recommendations: {
+        id: string;
+        type: string;
+        severity: 'high' | 'medium' | 'info';
+        icon: string;
+        merchantName?: string;
+        category?: string;
+        totalSpentINR: number;
+        orderCount?: number;
+        percentOfTotal?: number;
+        comparisonText?: string;
+        title: string;
+        reason: string;
+        aiSuggestion: string;
+        potentialSavingsINR: number;
+        actionTag: string;
+      }[];
+    }>(`/copilot/recommendations${month ? `?month=${month}` : ''}`),
 };
 
 export const rupees = (paise: number) => (paise || 0) / 100;

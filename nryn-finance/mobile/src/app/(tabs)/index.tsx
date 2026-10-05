@@ -13,6 +13,7 @@ import SafeSpendGauge from '../../components/copilot/SafeSpendGauge';
 import AnomalyAlertBanner from '../../components/copilot/AnomalyAlertBanner';
 import SubscriptionCard from '../../components/copilot/SubscriptionCard';
 import CopilotDrawer from '../../components/copilot/CopilotDrawer';
+import AiRecommendationsCard from '../../components/copilot/AiRecommendationsCard';
 
 
 
@@ -29,16 +30,18 @@ export default function Home() {
   const [safeSpend, setSafeSpend] = useState<any>(null);
   const [anomalies, setAnomalies] = useState<any[]>([]);
   const [subs, setSubs] = useState<any>(null);
+  const [recommendations, setRecommendations] = useState<any>(null);
 
   const load = useCallback(async (m?: string) => {
     try {
-      const [mo, st, tx, ss, an, sb] = await Promise.all([
+      const [mo, st, tx, ss, an, sb, rec] = await Promise.all([
         api.months(),
         api.budgetStatus(m),
         api.transactions({ month: m, sort, limit: '30' }),
         api.getSafeSpend(m).catch(() => null),
         api.getAnomalies().catch(() => ({ anomalies: [] })),
         api.getSubscriptions().catch(() => null),
+        api.getRecommendations(m).catch(() => null),
       ]);
       setMonths(mo.months);
       setStatus(st);
@@ -47,6 +50,7 @@ export default function Home() {
       if (ss?.ok) setSafeSpend(ss);
       if (an?.anomalies) setAnomalies(an.anomalies);
       if (sb?.ok) setSubs(sb);
+      if (rec?.ok) setRecommendations(rec);
     } finally {
       setLoading(false);
     }
@@ -199,6 +203,10 @@ export default function Home() {
           ))}
         </ScrollView>
       )}
+
+      <View style={{ marginHorizontal: 16, marginTop: 16 }}>
+        <AiRecommendationsCard data={recommendations} />
+      </View>
 
       <ExpensesCircularGraph
         currentSort={sort}

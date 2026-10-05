@@ -24,4 +24,7 @@ router.post('/loan-simulator', copilot.simulateLoan);
 // 6. Section 80C / 80D Tax-Saving Discovery Radar
 router.get('/tax-radar', copilot.getTaxRadar);
 
+// 7. Dynamic AI Merchant & Overspending Recommendations
+router.get('/recommendations', copilot.getRecommendations);
+
 module.exports = router;

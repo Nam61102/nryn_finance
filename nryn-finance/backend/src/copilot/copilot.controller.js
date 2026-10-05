@@ -5,6 +5,7 @@ const { detectAnomalies } = require('./anomaly.service');
 const { detectSubscriptions } = require('./subscription.service');
 const { calculateLoanPrepayment } = require('./loan.service');
 const { calculateTaxRadar } = require('./tax.service');
+const { generateRecommendations } = require('./recommendations.service');
 
 // ── 1. Conversational Chat ──
 exports.chat = async (req, res, next) => {
@@ -87,3 +88,15 @@ exports.getTaxRadar = async (req, res, next) => {
     next(err);
   }
 };
+
+// ── 7. Dynamic AI Merchant & Overspending Recommendations ──
+exports.getRecommendations = async (req, res, next) => {
+  try {
+    const month = req.query.month;
+    const result = await generateRecommendations(req.userId, month);
+    return res.json(result);
+  } catch (err) {
+    next(err);
+  }
+};
+
