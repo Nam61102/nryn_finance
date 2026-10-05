@@ -71,23 +71,35 @@ export default function Home() {
 
   useEffect(() => { load(month || undefined); }, [sort]);
 
-  // Sync on open is the GUARANTEED trigger — background fetch is a bonus.
-  useFocusEffect(useCallback(() => { syncSms().finally(() => load(month || undefined)); }, [month]));
+  // Immediate load on open so newly added expenses/budgets show instantly.
+  // SMS sync runs in background.
+  useFocusEffect(
+    useCallback(() => {
+      load(month || undefined);
+      syncSms()
+        .then((p) => {
+          if (p && p.uploaded > 0) {
+            load(month || undefined);
+          }
+        })
+        .catch(() => {});
+    }, [month, load])
+  );
 
   const onRefresh = async () => {
     setRefreshing(true);
     try {
-      const p = await syncSms(); // pull-to-refresh does a REAL SMS sync
-      if (p.phase === 'error') {
-        Alert.alert('Sync issue', p.error || 'Failed to read SMS');
-      } else if (p.uploaded > 0) {
+      await load(month || undefined);
+      const p = await syncSms().catch(() => null);
+      if (p && p.uploaded > 0) {
         Alert.alert('Sync Complete', `Synced ${p.uploaded} new transaction(s)!`);
+        await load(month || undefined);
       }
     } catch (e: any) {
-      Alert.alert('Sync error', e?.message || 'Failed to sync');
+      console.error('Refresh error:', e);
+    } finally {
+      setRefreshing(false);
     }
-    await load(month || undefined);
-    setRefreshing(false);
   };
 
   if (loading) {
@@ -108,12 +120,35 @@ export default function Home() {
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}
       >
         <View style={styles.header}>
-          <Text style={styles.hello}>NRYN Finance</Text>
-          {status?.needsReview > 0 && (
-            <TouchableOpacity onPress={() => router.push('/transactions?needsReview=true')} style={styles.reviewPill}>
-              <Text style={styles.reviewText}>{status.needsReview} to review</Text>
+          <View style={styles.headerLeft}>
+            <Text style={styles.hello}>NRYN Finance</Text>
+            {refreshing && (
+              <View style={styles.refreshPill}>
+                <ActivityIndicator size="small" color={theme.accent} />
+                <Text style={styles.refreshPillText}>Updating...</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.headerRight}>
+            <TouchableOpacity
+              style={styles.refreshBtn}
+              onPress={onRefresh}
+              disabled={refreshing}
+              activeOpacity={0.7}
+              accessibilityLabel="Refresh dashboard"
+            >
+              {refreshing ? (
+                <ActivityIndicator size="small" color={theme.accent} />
+              ) : (
+                <Text style={styles.refreshBtnIcon}>🔄</Text>
+              )}
             </TouchableOpacity>
-          )}
+            {status?.needsReview > 0 && (
+              <TouchableOpacity onPress={() => router.push('/transactions?needsReview=true')} style={styles.reviewPill}>
+                <Text style={styles.reviewText}>{status.needsReview} to review</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         </View>
 
         <AnomalyAlertBanner anomalies={anomalies} />
@@ -249,7 +284,38 @@ export default function Home() {
 const styles = StyleSheet.create({
   center: { flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 8 },
+  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   hello: { color: theme.text, fontSize: 20, fontWeight: '800' },
+  refreshBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: theme.cardAlt,
+    borderWidth: 1,
+    borderColor: theme.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  refreshBtnIcon: {
+    fontSize: 16,
+  },
+  refreshPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+  },
+  refreshPillText: {
+    color: theme.accent,
+    fontSize: 11,
+    fontWeight: '700',
+  },
   reviewPill: {
     backgroundColor: '#FFF7ED',
     borderRadius: 999,

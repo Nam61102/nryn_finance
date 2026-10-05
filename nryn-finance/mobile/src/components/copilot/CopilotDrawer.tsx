@@ -97,10 +97,10 @@ export default function CopilotDrawer() {
                 <View style={styles.copilotAvatar}>
                   <Text style={styles.avatarIcon}>✨</Text>
                 </View>
-                <div>
+                <View>
                   <Text style={styles.sheetTitle}>NRYN Copilot</Text>
                   <Text style={styles.sheetSubtitle}>Autonomous AI Financial Agent</Text>
-                </div>
+                </View>
               </View>
               <TouchableOpacity onPress={() => setVisible(false)} style={styles.closeBtn}>
                 <Text style={styles.closeText}>✕</Text>

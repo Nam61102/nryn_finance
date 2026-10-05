@@ -32,11 +32,42 @@ interface AiRecommendationsCardProps {
 }
 
 export default function AiRecommendationsCard({ data, onAskCopilot }: AiRecommendationsCardProps) {
-  if (!data || !data.recommendations || data.recommendations.length === 0) {
+  if (!data) {
     return null;
   }
 
   const { totalPotentialSavingsINR, recommendations } = data;
+
+  if (!recommendations || recommendations.length === 0) {
+    return (
+      <View style={styles.card}>
+        <View style={styles.headerRow}>
+          <View style={styles.titleGroup}>
+            <Text style={styles.icon}>✨</Text>
+            <View>
+              <Text style={styles.title}>AI Spending Recommendations</Text>
+              <Text style={styles.subtitle}>Smart spend analysis & savings tips</Text>
+            </View>
+          </View>
+          <View style={styles.balancedBadge}>
+            <Text style={styles.balancedBadgeText}>BALANCED</Text>
+          </View>
+        </View>
+
+        <View style={styles.balancedCard}>
+          <Text style={styles.balancedIcon}>🌿</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.balancedTitle}>Spending is Balanced</Text>
+            <Text style={styles.balancedText}>
+              {data.totalSpentINR && data.totalSpentINR > 0
+                ? `Total spending is ₹${data.totalSpentINR.toLocaleString('en-IN')}. No high-frequency merchant leaks or unusual dining spikes detected this month.`
+                : 'No excessive merchant leaks or delivery spikes detected this month. Spends are within normal limits.'}
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View style={styles.card}>
@@ -46,7 +77,7 @@ export default function AiRecommendationsCard({ data, onAskCopilot }: AiRecommen
           <Text style={styles.icon}>✨</Text>
           <View>
             <Text style={styles.title}>AI Spending Recommendations</Text>
-            <Text style={styles.subtitle}>खर्चाचे विश्लेषण आणि बचत टिप्स</Text>
+            <Text style={styles.subtitle}>Smart spend analysis & savings tips</Text>
           </View>
         </View>
         {totalPotentialSavingsINR && totalPotentialSavingsINR > 0 ? (
@@ -319,5 +350,43 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: '600',
     color: theme.accent,
+  },
+  balancedBadge: {
+    backgroundColor: '#ECFDF5',
+    borderWidth: 1,
+    borderColor: '#A7F3D0',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  balancedBadgeText: {
+    fontSize: 10,
+    fontWeight: '800',
+    color: '#059669',
+    textTransform: 'uppercase',
+  },
+  balancedCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    backgroundColor: '#F8FAFC',
+    borderRadius: 14,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#E2E8F0',
+  },
+  balancedIcon: {
+    fontSize: 24,
+  },
+  balancedTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: theme.text,
+    marginBottom: 2,
+  },
+  balancedText: {
+    fontSize: 12,
+    color: '#64748B',
+    lineHeight: 17,
   },
 });

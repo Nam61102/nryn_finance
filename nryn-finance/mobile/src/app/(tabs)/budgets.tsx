@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, RefreshControl } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { api, formatINR } from '../../services/api';
 import { theme, FALLBACK_CATEGORIES } from '../../theme';
@@ -13,39 +13,104 @@ export default function Budgets() {
   const [status, setStatus] = useState<any>(null);
   const [cats, setCats] = useState(FALLBACK_CATEGORIES);
   const [draft, setDraft] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(async () => {
-    const [st, c] = await Promise.all([api.budgetStatus(), api.categories().catch(() => ({ categories: FALLBACK_CATEGORIES }))]);
-    setStatus(st);
-    setCats(c.categories);
-    const d: Record<string, string> = { total: String((st.ring.total || 0) / 100) };
-    for (const chip of st.chips) d[chip.category] = String(chip.budget / 100);
-    setDraft(d);
+    try {
+      const [st, c] = await Promise.all([
+        api.budgetStatus(),
+        api.categories().catch(() => ({ categories: FALLBACK_CATEGORIES })),
+      ]);
+      setStatus(st);
+      setCats(c.categories);
+      const d: Record<string, string> = { total: String(Math.round((st.ring.total || 0) / 100)) };
+      for (const chip of st.chips) d[chip.category] = String(Math.round(chip.budget / 100));
+      setDraft(d);
+    } catch (err: any) {
+      console.error('Failed to load budgets:', err);
+    }
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
-  const save = async (scope: 'total' | 'category', category?: string) => {
-    const key = scope === 'total' ? 'total' : category!;
-    const value = Number(draft[key]);
-    if (Number.isNaN(value) || value < 0) return Alert.alert('Enter a valid amount');
-    await api.post('/budgets', { scope, category: scope === 'total' ? null : category, amount: value });
-    load();
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await load();
+    setRefreshing(false);
   };
 
-  if (!status) return <View style={styles.center}><Text style={{ color: theme.textDim }}>Loading…</Text></View>;
+  const save = async (scope: 'total' | 'category', category?: string) => {
+    const key = scope === 'total' ? 'total' : category!;
+    const rawVal = String(draft[key] || '').replace(/,/g, '').trim();
+    if (rawVal === '') {
+      return Alert.alert('Invalid Amount', 'Please enter an amount to save.');
+    }
+    const value = Number(rawVal);
+    if (Number.isNaN(value) || value < 0) {
+      return Alert.alert('Invalid Amount', 'Please enter a valid positive number.');
+    }
+
+    try {
+      setSavingKey(key);
+      await api.post('/budgets', {
+        scope,
+        category: scope === 'total' ? null : category,
+        amount: value,
+      });
+      await load();
+      const label = scope === 'total' ? 'Monthly total budget' : (cats.find(c => c.key === category)?.label || category);
+      Alert.alert('Budget Saved', `${label} set to ₹${value.toLocaleString('en-IN')}`);
+    } catch (err: any) {
+      console.error('Save budget error:', err);
+      Alert.alert('Save Failed', err?.message || 'Could not save budget. Please check your connection.');
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  if (!status) return <View style={styles.center}><ActivityIndicator color={theme.accent} /></View>;
 
   return (
-    <ScrollView style={{ backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingTop: 56, paddingBottom: 40 }}>
-      <Text style={styles.h1}>Budgets</Text>
-      <Text style={styles.sub}>{status.period.label} · these carry forward to every month unless you override one.</Text>
+    <ScrollView
+      style={{ backgroundColor: theme.bg }}
+      contentContainerStyle={{ padding: 16, paddingTop: 56, paddingBottom: 40 }}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}
+    >
+      <View style={styles.topHeader}>
+        <View>
+          <Text style={styles.h1}>Budgets</Text>
+          <Text style={styles.sub}>{status.period.label} · carries forward every month</Text>
+        </View>
+        <TouchableOpacity style={styles.headerRefreshBtn} onPress={onRefresh} disabled={refreshing}>
+          <Text style={styles.headerRefreshText}>🔄</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.card}>
         <Text style={styles.rowLabel}>Total monthly budget</Text>
         <View style={styles.inputRow}>
           <Text style={styles.rupee}>₹</Text>
-          <TextInput style={styles.input} keyboardType="decimal-pad" value={draft.total} onChangeText={(v) => setDraft({ ...draft, total: v })} placeholderTextColor={theme.textDim} placeholder="0" />
-          <TouchableOpacity style={styles.saveBtn} onPress={() => save('total')}><Text style={styles.saveText}>Save</Text></TouchableOpacity>
+          <TextInput
+            style={styles.input}
+            keyboardType="decimal-pad"
+            value={draft.total}
+            onChangeText={(v) => setDraft({ ...draft, total: v })}
+            placeholderTextColor={theme.textDim}
+            placeholder="0"
+          />
+          <TouchableOpacity
+            style={[styles.saveBtn, savingKey === 'total' && styles.saveBtnDisabled]}
+            onPress={() => save('total')}
+            disabled={savingKey !== null}
+            activeOpacity={0.8}
+          >
+            {savingKey === 'total' ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveText}>Save</Text>
+            )}
+          </TouchableOpacity>
         </View>
         <Text style={styles.hint}>
           Unallocated: {formatINR(status.unallocated)} {status.unallocated < 0 ? '(categories exceed your total)' : ''}
@@ -66,7 +131,18 @@ export default function Budgets() {
               placeholder="0"
               placeholderTextColor={theme.textDim}
             />
-            <TouchableOpacity style={styles.saveBtn} onPress={() => save('category', c.key)}><Text style={styles.saveText}>Save</Text></TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.saveBtn, savingKey === c.key && styles.saveBtnDisabled]}
+              onPress={() => save('category', c.key)}
+              disabled={savingKey !== null}
+              activeOpacity={0.8}
+            >
+              {savingKey === c.key ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.saveText}>Save</Text>
+              )}
+            </TouchableOpacity>
           </View>
         </View>
       ))}
@@ -105,6 +181,25 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.35,
     shadowRadius: 4,
     elevation: 2,
+  },
+  topHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  headerRefreshBtn: {
+    padding: 8,
+    backgroundColor: theme.cardAlt,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: theme.border,
+  },
+  headerRefreshText: {
+    fontSize: 16,
+  },
+  saveBtnDisabled: {
+    opacity: 0.6,
   },
   saveText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
   hint: { color: theme.textDim, fontSize: 11, marginTop: 8 },

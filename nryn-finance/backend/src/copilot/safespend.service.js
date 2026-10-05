@@ -28,11 +28,15 @@ async function calculateSafeSpend(userId, monthStr) {
   const currentDay = isCurrentMonth ? now.getDate() : daysInMonth;
   const daysRemaining = isCurrentMonth ? Math.max(1, daysInMonth - currentDay + 1) : 1;
 
-  // 1. Fetch total monthly budget (default to ₹35,000 if not set)
-  let budgetPaise = 35000 * 100;
+  // 1. Fetch total monthly budget (strictly from user's budget settings)
+  let budgetPaise = 0;
+  let hasBudget = false;
   try {
-    const b = await Budget.findOne({ userId, scope: 'total', month: { $in: [monthStr, null] } }).lean();
-    if (b && b.amount > 0) budgetPaise = b.amount;
+    const b = await Budget.findOne({ userId, scope: 'total', month: { $in: [monthStr, null] } }).sort({ month: -1 }).lean();
+    if (b && b.amount > 0) {
+      budgetPaise = b.amount;
+      hasBudget = true;
+    }
   } catch (err) {
     // fallback
   }
@@ -66,44 +70,54 @@ async function calculateSafeSpend(userId, monthStr) {
   });
   const todaySpentPaise = todayTxns.reduce((sum, t) => sum + (t.amount || 0), 0);
 
-  // 5. Compute available pool
-  const discretionaryPoolPaise = Math.max(0, budgetPaise - fixedLiabilitiesPaise - totalSpentSoFarPaise);
-  const dailySafeSpendPaise = Math.max(0, Math.round(discretionaryPoolPaise / daysRemaining));
-  const todayRemainingPaise = Math.max(0, dailySafeSpendPaise - todaySpentPaise);
+  // 5. Compute available pool based on actual budget
+  const discretionaryPoolPaise = hasBudget ? Math.max(0, budgetPaise - fixedLiabilitiesPaise - totalSpentSoFarPaise) : 0;
+  const dailySafeSpendPaise = hasBudget ? Math.max(0, Math.round(discretionaryPoolPaise / daysRemaining)) : 0;
+  const todayRemainingPaise = hasBudget ? Math.max(0, dailySafeSpendPaise - todaySpentPaise) : 0;
 
   // 6. Burn status & Projected Runout Date
   let burnStatus = 'green';
-  if (todaySpentPaise > dailySafeSpendPaise * 1.3) burnStatus = 'red';
-  else if (todaySpentPaise > dailySafeSpendPaise) burnStatus = 'amber';
+  if (hasBudget) {
+    if (todaySpentPaise > dailySafeSpendPaise * 1.3) burnStatus = 'red';
+    else if (todaySpentPaise > dailySafeSpendPaise) burnStatus = 'amber';
+  }
 
   const daysSpent = Math.max(1, currentDay);
   const avgDailyBurnPaise = Math.round(totalSpentSoFarPaise / daysSpent);
   let projectedRunoutDate = null;
 
-  if (avgDailyBurnPaise > 0) {
+  if (hasBudget && avgDailyBurnPaise > 0) {
     const remainingDaysCapacity = Math.floor((budgetPaise - fixedLiabilitiesPaise - totalSpentSoFarPaise) / avgDailyBurnPaise);
     const runoutDay = Math.min(daysInMonth, currentDay + Math.max(0, remainingDaysCapacity));
     projectedRunoutDate = `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}-${String(runoutDay).padStart(2, '0')}`;
   }
 
-  let insightMessage = `Safe to spend ₹${Math.round(dailySafeSpendPaise / 100)} today without breaking month-end budget.`;
-  if (burnStatus === 'green') {
-    insightMessage = `You're in the green zone! Spent ₹${Math.round(todaySpentPaise / 100)} of your ₹${Math.round(dailySafeSpendPaise / 100)} daily limit today.`;
+  let insightMessage = '';
+  if (!hasBudget) {
+    const spentTodayINR = Math.round(todaySpentPaise / 100);
+    insightMessage = spentTodayINR > 0
+      ? `Spent ₹${spentTodayINR.toLocaleString('en-IN')} today. Set a monthly budget to calculate your daily safe limit.`
+      : 'Set a monthly budget to calculate your daily safe limit.';
+  } else if (burnStatus === 'green') {
+    insightMessage = `You're in the green zone! Spent ₹${Math.round(todaySpentPaise / 100).toLocaleString('en-IN')} of your ₹${Math.round(dailySafeSpendPaise / 100).toLocaleString('en-IN')} daily limit today.`;
   } else if (burnStatus === 'amber') {
-    insightMessage = `Caution: Today's spending has reached ₹${Math.round(todaySpentPaise / 100)}. Keep evening spend minimal to stay on track.`;
+    insightMessage = `Caution: Today's spending has reached ₹${Math.round(todaySpentPaise / 100).toLocaleString('en-IN')}. Keep evening spend minimal to stay on track.`;
   } else {
-    insightMessage = `Alert: Today's limit exceeded by ₹${Math.round((todaySpentPaise - dailySafeSpendPaise) / 100)}. Daily budget adjusted for the remaining ${daysRemaining} days.`;
+    insightMessage = `Alert: Today's limit exceeded by ₹${Math.round((todaySpentPaise - dailySafeSpendPaise) / 100).toLocaleString('en-IN')}. Daily budget adjusted for remaining ${daysRemaining} days.`;
   }
 
   return {
     ok: true,
+    hasBudget,
     month: `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`,
     currentDay,
     daysInMonth,
     daysRemaining,
     totalBudgetPaise: budgetPaise,
+    totalBudgetINR: Math.round(budgetPaise / 100),
     fixedLiabilitiesPaise,
     totalSpentSoFarPaise,
+    totalSpentSoFarINR: Math.round(totalSpentSoFarPaise / 100),
     discretionaryPoolPaise,
     dailySafeSpendPaise,
     dailySafeSpendINR: Math.round(dailySafeSpendPaise / 100),
@@ -112,6 +126,7 @@ async function calculateSafeSpend(userId, monthStr) {
     todayRemainingPaise,
     todayRemainingINR: Math.round(todayRemainingPaise / 100),
     avgDailyBurnPaise,
+    avgDailyBurnINR: Math.round(avgDailyBurnPaise / 100),
     burnStatus,
     projectedRunoutDate,
     insightMessage

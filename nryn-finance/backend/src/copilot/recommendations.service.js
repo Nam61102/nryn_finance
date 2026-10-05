@@ -1,12 +1,13 @@
 'use strict';
 const Transaction = require('../db/models/Transaction');
 const Budget = require('../db/models/Budget');
-const { chatJSON } = require('../ai/llm.client');
+const { chatJSON, isEnabled } = require('../ai/llm.client');
 
 /**
- * Dynamic AI Recommendation Engine
+ * 100% Dynamic AI Recommendation Engine
  * Analyzes live transactions to detect merchant-level & category-level overspending,
- * frequency leaks (e.g. 15 Swiggy/Zomato orders), and provides tailored, actionable saving advice.
+ * frequency leaks (e.g. multiple Swiggy/Zomato/cabs orders), and generates tailored, actionable saving advice.
+ * NEVER returns hardcoded/static dummy cards.
  */
 async function generateRecommendations(userId, monthStr) {
   const now = new Date();
@@ -28,7 +29,7 @@ async function generateRecommendations(userId, monthStr) {
   const prevMonthStart = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
   const prevMonthEnd = new Date(Date.UTC(targetYear, targetMonth, 0, 23, 59, 59, 999));
 
-  // 1. Fetch current month and previous month transactions
+  // 1. Fetch current month and previous month real transactions
   const [currentTxns, prevTxns, budgetDoc] = await Promise.all([
     Transaction.find({
       userId,
@@ -48,11 +49,10 @@ async function generateRecommendations(userId, monthStr) {
   const totalSpentPaise = currentTxns.reduce((sum, t) => sum + (t.amount || 0), 0);
   const totalSpentINR = Math.round(totalSpentPaise / 100);
 
-  // Group by Merchant
+  // Group by Merchant with entity normalization
   const merchantMap = new Map();
   currentTxns.forEach(t => {
     let name = (t.merchantName || t.merchantRaw || 'Other').trim();
-    // Normalize common names
     const lower = name.toLowerCase();
     if (lower.includes('swiggy')) name = 'Swiggy';
     else if (lower.includes('zomato')) name = 'Zomato';
@@ -62,6 +62,8 @@ async function generateRecommendations(userId, monthStr) {
     else if (lower.includes('zepto')) name = 'Zepto';
     else if (lower.includes('amazon')) name = 'Amazon';
     else if (lower.includes('starbucks')) name = 'Starbucks';
+    else if (lower.includes('instamart')) name = 'Instamart';
+    else if (lower.includes('flipkart')) name = 'Flipkart';
 
     if (!merchantMap.has(name)) {
       merchantMap.set(name, {
@@ -78,7 +80,7 @@ async function generateRecommendations(userId, monthStr) {
     item.txns.push(t);
   });
 
-  // Calculate previous month spend by merchant for comparisons
+  // Calculate previous month spend by merchant for delta comparisons
   const prevMerchantMap = new Map();
   prevTxns.forEach(t => {
     let name = (t.merchantName || t.merchantRaw || 'Other').trim();
@@ -87,6 +89,7 @@ async function generateRecommendations(userId, monthStr) {
     else if (lower.includes('zomato')) name = 'Zomato';
     else if (lower.includes('uber')) name = 'Uber';
     else if (lower.includes('blinkit')) name = 'Blinkit';
+    else if (lower.includes('zepto')) name = 'Zepto';
 
     prevMerchantMap.set(name, (prevMerchantMap.get(name) || 0) + (t.amount || 0));
   });
@@ -97,77 +100,75 @@ async function generateRecommendations(userId, monthStr) {
   const recommendations = [];
   let totalPotentialSavingsINR = 0;
 
-  // ── RULE 1: Highest Spend Merchant Analysis (e.g. Swiggy / Dining) ──
-  if (sortedMerchants.length > 0) {
-    const top = sortedMerchants[0];
-    const topSpentINR = Math.round(top.totalPaise / 100);
-    const prevSpentINR = Math.round((prevMerchantMap.get(top.name) || 0) / 100);
+  // Filter out normal essential utilities/fuel so single petrol visits aren't flagged as leaks
+  const discretionaryMerchants = sortedMerchants.filter(m => !isEssentialMerchant(m.name, m.category));
 
-    const percentOfTotal = totalSpentINR > 0 ? Math.round((topSpentINR / totalSpentINR) * 100) : 0;
-    const isHigherThanLast = prevSpentINR > 0 ? Math.round(((topSpentINR - prevSpentINR) / prevSpentINR) * 100) : 0;
+  // ── RULE 1: Discretionary / Food Delivery Overspend (e.g. Swiggy, Zomato, Dining) ──
+  const foodDelivery = sortedMerchants.find(m =>
+    /swiggy|zomato|eatclub|mcdonald|domino|starbucks|kfc|burger/i.test(m.name) ||
+    (m.category === 'food' && m.count >= 2)
+  );
 
-    // Potential savings: cut 40% of excessive orders
-    const savingsTarget = Math.round(topSpentINR * 0.4);
+  if (foodDelivery && (foodDelivery.count >= 2 || foodDelivery.totalPaise >= 100000)) {
+    const foodSpentINR = Math.round(foodDelivery.totalPaise / 100);
+    const prevSpentINR = Math.round((prevMerchantMap.get(foodDelivery.name) || 0) / 100);
+    const pctOfTotal = totalSpentINR > 0 ? Math.round((foodSpentINR / totalSpentINR) * 100) : 0;
+    const isHigher = prevSpentINR > 0 ? Math.round(((foodSpentINR - prevSpentINR) / prevSpentINR) * 100) : 0;
 
-    let suggestion = '';
-    if (top.name.toLowerCase() === 'swiggy' || top.name.toLowerCase() === 'zomato') {
-      suggestion = `You ordered ${top.count} times from ${top.name} this month (taking ${percentOfTotal}% of your total spending). Limiting deliveries to weekends and cooking 2 weekdays can easily save you ₹${savingsTarget.toLocaleString('en-IN')}!`;
-    } else if (top.category === 'transport') {
-      suggestion = `Your ${top.name} rides totaled ₹${topSpentINR.toLocaleString('en-IN')} across ${top.count} trips. Using metro/bus for regular commutes could save ₹${savingsTarget.toLocaleString('en-IN')}.`;
-    } else {
-      suggestion = `${top.name} is your single largest expense this month (₹${topSpentINR.toLocaleString('en-IN')}). Setting a strict monthly cap of ₹${Math.round(topSpentINR * 0.7).toLocaleString('en-IN')} will keep you in the green zone.`;
-    }
+    // Potential savings: cut 35-40% of delivery fee & excess orders
+    const savingsTarget = Math.max(200, Math.round(foodSpentINR * 0.35));
 
     recommendations.push({
-      id: `rec_top_${top.name.toLowerCase().replace(/\s+/g, '_')}`,
-      type: 'top_merchant_overspend',
-      severity: percentOfTotal >= 30 ? 'high' : 'medium',
-      icon: getIconForCategory(top.category),
-      merchantName: top.name,
-      category: top.category,
-      totalSpentINR,
-      orderCount: top.count,
-      percentOfTotal,
-      comparisonText: isHigherThanLast > 0 ? `+${isHigherThanLast}% more than last month` : `${top.count} transactions recorded`,
-      title: `Excessive Spending at ${top.name}`,
-      reason: `${top.name} took ₹${topSpentINR.toLocaleString('en-IN')} across ${top.count} orders (${percentOfTotal}% of total spend).`,
-      aiSuggestion: suggestion,
+      id: `rec_food_${foodDelivery.name.toLowerCase().replace(/\s+/g, '_')}`,
+      type: 'delivery_overspend',
+      severity: foodDelivery.count >= 5 || pctOfTotal >= 25 ? 'high' : 'medium',
+      icon: '🍔',
+      merchantName: foodDelivery.name,
+      category: 'food',
+      totalSpentINR: foodSpentINR,
+      orderCount: foodDelivery.count,
+      percentOfTotal: pctOfTotal,
+      comparisonText: isHigher > 0 ? `+${isHigher}% vs last month` : `${foodDelivery.count} orders recorded`,
+      title: `High Spending on ${foodDelivery.name}`,
+      reason: `You spent ₹${foodSpentINR.toLocaleString('en-IN')} across ${foodDelivery.count} orders on ${foodDelivery.name} (${pctOfTotal}% of your total month spend).`,
+      aiSuggestion: `You ordered ${foodDelivery.count} times from ${foodDelivery.name}. Cooking dinner on weekdays and restricting delivery to weekends will save ~₹${savingsTarget.toLocaleString('en-IN')}/month!`,
       potentialSavingsINR: savingsTarget,
       actionTag: `Save ~₹${savingsTarget.toLocaleString('en-IN')}/mo`
     });
-
     totalPotentialSavingsINR += savingsTarget;
   }
 
-  // ── RULE 2: High Frequency Delivery / Coffee Leaks (5+ orders) ──
-  const frequentMerchants = sortedMerchants.filter(m => m.count >= 4 && m !== sortedMerchants[0]);
+  // ── RULE 2: Frequent Outflow Leaks (3+ repeated orders to same merchant) ──
+  const frequentMerchants = discretionaryMerchants.filter(m =>
+    m.count >= 3 && (!foodDelivery || m.name !== foodDelivery.name)
+  );
+
   if (frequentMerchants.length > 0) {
     const freq = frequentMerchants[0];
     const freqSpentINR = Math.round(freq.totalPaise / 100);
-    const savings = Math.round(freqSpentINR * 0.35);
+    const freqSavings = Math.max(150, Math.round(freqSpentINR * 0.3));
 
     recommendations.push({
       id: `rec_freq_${freq.name.toLowerCase().replace(/\s+/g, '_')}`,
       type: 'frequency_leak',
       severity: 'medium',
-      icon: '⚡',
+      icon: getIconForCategory(freq.category),
       merchantName: freq.name,
       category: freq.category,
       totalSpentINR: freqSpentINR,
       orderCount: freq.count,
       percentOfTotal: totalSpentINR > 0 ? Math.round((freqSpentINR / totalSpentINR) * 100) : 0,
-      comparisonText: `${freq.count} frequent orders`,
+      comparisonText: `${freq.count} repeat orders`,
       title: `Frequent Outflow at ${freq.name}`,
       reason: `You made ${freq.count} separate payments to ${freq.name} totaling ₹${freqSpentINR.toLocaleString('en-IN')}.`,
-      aiSuggestion: `Small repeated taps add up quickly! Consolidating orders into fewer trips will save delivery fees and impulsive purchases.`,
-      potentialSavingsINR: savings,
-      actionTag: `Save ~₹${savings.toLocaleString('en-IN')}/mo`
+      aiSuggestion: `Small repeated transactions add up quickly. Consolidating orders into fewer bulk trips will cut delivery & convenience costs.`,
+      potentialSavingsINR: freqSavings,
+      actionTag: `Save ~₹${freqSavings.toLocaleString('en-IN')}/mo`
     });
-
-    totalPotentialSavingsINR += savings;
+    totalPotentialSavingsINR += freqSavings;
   }
 
-  // ── RULE 3: Category Level Outliers (e.g. Food & Dining > 40% of spend) ──
+  // ── RULE 3: Category Imbalance (>40% of spend in a single discretionary category) ──
   const categoryMap = new Map();
   currentTxns.forEach(t => {
     const cat = t.category || 'other';
@@ -178,7 +179,12 @@ async function generateRecommendations(userId, monthStr) {
     const catINR = Math.round(paise / 100);
     const pct = totalSpentINR > 0 ? Math.round((catINR / totalSpentINR) * 100) : 0;
 
-    if (pct >= 40 && cat !== 'rent' && cat !== 'investment' && recommendations.length < 3) {
+    if (
+      pct >= 40 &&
+      !['rent', 'investment', 'transfer', 'bills_utilities', 'education', 'health'].includes(cat) &&
+      recommendations.length < 2 &&
+      catINR >= 2000
+    ) {
       const catSavings = Math.round(catINR * 0.25);
       recommendations.push({
         id: `rec_cat_${cat}`,
@@ -189,8 +195,8 @@ async function generateRecommendations(userId, monthStr) {
         totalSpentINR: catINR,
         percentOfTotal: pct,
         title: `Heavy ${cat.toUpperCase()} Concentration`,
-        reason: `${cat.toUpperCase()} accounts for ${pct}% of your entire monthly budget (₹${catINR.toLocaleString('en-IN')}).`,
-        aiSuggestion: `Financial advisors recommend keeping discretionary ${cat} below 25%. Allocating ₹${catSavings.toLocaleString('en-IN')} to emergency savings instead will strengthen your cash buffer.`,
+        reason: `${cat.toUpperCase()} took ${pct}% of your spending this month (₹${catINR.toLocaleString('en-IN')}).`,
+        aiSuggestion: `Keeping discretionary ${cat} below 25% of your outflow and redirecting ₹${catSavings.toLocaleString('en-IN')} to emergency savings will strengthen your buffer.`,
         potentialSavingsINR: catSavings,
         actionTag: `Reallocate ₹${catSavings.toLocaleString('en-IN')}`
       });
@@ -198,32 +204,14 @@ async function generateRecommendations(userId, monthStr) {
     }
   }
 
-  // If no transactions or baseline is empty, provide a dynamic sample based on user's target month
-  if (recommendations.length === 0) {
-    recommendations.push({
-      id: 'rec_sample_swiggy',
-      type: 'top_merchant_overspend',
-      severity: 'high',
-      icon: '🍔',
-      merchantName: 'Swiggy',
-      category: 'food',
-      totalSpentINR: 3450,
-      orderCount: 11,
-      percentOfTotal: 38,
-      comparisonText: '+42% higher than last month',
-      title: 'High Swiggy & Dining Spend Detected',
-      reason: 'Swiggy was your highest spend merchant this month with 11 orders totaling ₹3,450.',
-      aiSuggestion: 'You ordered 11 times this month. Cooking dinner on weekdays and limiting delivery to weekends will save you ~₹1,800 next month!',
-      potentialSavingsINR: 1800,
-      actionTag: 'Save ~₹1,800/mo'
-    });
-    totalPotentialSavingsINR = 1800;
-  }
+  // NOTE: If recommendations.length === 0, we do NOT inject any static fake cards!
+  // Instead, the frontend renders a clean "All balanced - no leaks" status.
 
   return {
     ok: true,
     month: `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`,
     count: recommendations.length,
+    hasOverspending: recommendations.length > 0,
     totalSpentINR,
     totalPotentialSavingsINR,
     topMerchants: sortedMerchants.slice(0, 5).map(m => ({
@@ -236,12 +224,22 @@ async function generateRecommendations(userId, monthStr) {
   };
 }
 
+function isEssentialMerchant(name, category) {
+  const lower = (name || '').toLowerCase();
+  if (['rent', 'bills_utilities', 'education', 'health'].includes(category)) return true;
+  if (/petrol|fuel|diesel|cng|hpcl|bpcl|ioc|indianoil|shell|patil|reliance petroleum/i.test(lower)) return true;
+  if (/hospital|clinic|pharma|medical|doctor|apollo|medplus|netmeds/i.test(lower)) return true;
+  if (/school|college|tuition|vidyalaya|university|fees/i.test(lower)) return true;
+  if (/electricity|bescom|mseb|water|gas|mahanagar|torrent/i.test(lower)) return true;
+  return false;
+}
+
 function getIconForCategory(cat) {
   switch (cat) {
     case 'food': return '🍔';
     case 'groceries': return '🛒';
     case 'transport': return '🚕';
-    case 'bills': return '💡';
+    case 'bills_utilities': return '💡';
     case 'entertainment': return '🎬';
     case 'shopping': return '🛍️';
     case 'health': return '💊';

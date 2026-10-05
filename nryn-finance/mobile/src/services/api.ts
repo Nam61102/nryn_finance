@@ -97,12 +97,15 @@ export const api = {
   getSafeSpend: (month?: string) =>
     request<{
       ok: boolean;
+      hasBudget?: boolean;
       month: string;
       currentDay: number;
       daysRemaining: number;
       dailySafeSpendINR: number;
       todaySpentINR: number;
       todayRemainingINR: number;
+      totalBudgetINR?: number;
+      totalSpentSoFarINR?: number;
       burnStatus: 'green' | 'amber' | 'red';
       projectedRunoutDate: string | null;
       insightMessage: string;

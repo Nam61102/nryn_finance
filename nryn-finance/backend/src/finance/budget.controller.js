@@ -13,15 +13,45 @@ async function listBudgets(req, res) {
   res.json({ budgets: await Budget.find(q).lean() });
 }
 
-async function upsertBudget(req, res) {
-  const { scope = 'category', category = null, amount, amountPaise, month = null } = req.body || {};
-  const paise = amountPaise ?? N.toPaise(amount);
-  if (paise === null || paise < 0) return res.status(400).json({ error: 'valid_amount_required' });
-  if (scope === 'category' && !CATEGORY_KEYS.includes(category)) return res.status(400).json({ error: 'invalid_category' });
+async function upsertBudget(req, res, next) {
+  try {
+    const { scope = 'category', category = null, amount, amountPaise, month = null } = req.body || {};
+    const paise = amountPaise ?? N.toPaise(amount);
+    if (paise === null || isNaN(paise) || paise < 0) {
+      return res.status(400).json({ error: 'valid_amount_required' });
+    }
+    if (scope === 'category' && !CATEGORY_KEYS.includes(category)) {
+      return res.status(400).json({ error: 'invalid_category' });
+    }
 
-  const key = { userId: req.userId, scope, category: scope === 'total' ? null : category, month: month ? resolveMonth(month).month : null };
-  const budget = await Budget.findOneAndUpdate(key, { $set: { amount: paise, period: 'monthly' } }, { upsert: true, new: true });
-  res.json({ budget });
+    const targetCategory = scope === 'total' ? null : category;
+    const targetMonth = month ? resolveMonth(month).month : null;
+
+    const key = { userId: req.userId, scope, category: targetCategory, month: targetMonth };
+    const budget = await Budget.findOneAndUpdate(
+      key,
+      { $set: { amount: paise, period: 'monthly' } },
+      { upsert: true, new: true }
+    );
+
+    // If saving rolling default (month is null), also synchronize current month override if one existed
+    if (!targetMonth) {
+      try {
+        const curMonth = resolveMonth().month;
+        await Budget.updateMany(
+          { userId: req.userId, scope, category: targetCategory, month: curMonth },
+          { $set: { amount: paise } }
+        );
+      } catch (errSync) {
+        // non-blocking
+      }
+    }
+
+    res.json({ ok: true, budget });
+  } catch (err) {
+    console.error('upsertBudget error:', err);
+    res.status(500).json({ error: err.message || 'failed_to_save_budget' });
+  }
 }
 
 async function patchBudget(req, res) {

@@ -1,12 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { router } from 'expo-router';
 import { theme } from '../../theme';
 
 interface SafeSpendProps {
   data: {
+    hasBudget?: boolean;
     dailySafeSpendINR: number;
     todaySpentINR: number;
     todayRemainingINR: number;
+    totalSpentSoFarINR?: number;
     burnStatus: 'green' | 'amber' | 'red';
     daysRemaining: number;
     insightMessage: string;
@@ -15,6 +18,48 @@ interface SafeSpendProps {
 
 export default function SafeSpendGauge({ data }: SafeSpendProps) {
   if (!data) return null;
+
+  if (!data.hasBudget) {
+    return (
+      <View style={styles.card}>
+        <View style={styles.headerRow}>
+          <View style={styles.titleGroup}>
+            <Text style={styles.icon}>🎯</Text>
+            <Text style={styles.title}>Safe-to-Spend Daily Allowance</Text>
+          </View>
+          <View style={[styles.statusBadge, { backgroundColor: '#F8FAFC', borderColor: '#E2E8F0' }]}>
+            <Text style={[styles.statusText, { color: '#64748B' }]}>NO BUDGET SET</Text>
+          </View>
+        </View>
+
+        <View style={styles.metricRow}>
+          <View>
+            <Text style={styles.metricSub}>Spent Today</Text>
+            <Text style={[styles.metricMedium, { color: theme.accent }]}>
+              ₹{data.todaySpentINR.toLocaleString('en-IN')}
+            </Text>
+          </View>
+          <View style={styles.divider} />
+          <View>
+            <Text style={styles.metricSub}>Spent This Month</Text>
+            <Text style={[styles.metricMedium, { color: theme.text }]}>
+              ₹{(data.totalSpentSoFarINR || 0).toLocaleString('en-IN')}
+            </Text>
+          </View>
+        </View>
+
+        <TouchableOpacity
+          style={styles.promptBtn}
+          onPress={() => router.push('/(tabs)/budgets')}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.promptBtnText}>
+            🎯 Set monthly budget to unlock daily safe limit →
+          </Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   const statusColor =
     data.burnStatus === 'green' ? '#10B981' : data.burnStatus === 'amber' ? '#F59E0B' : '#FF4757';
@@ -127,4 +172,19 @@ const styles = StyleSheet.create({
   },
   fill: { height: '100%', borderRadius: 3 },
   hintText: { color: theme.textDim, fontSize: 11, lineHeight: 16 },
+  promptBtn: {
+    marginTop: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 12,
+    backgroundColor: '#FFF7ED',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#FED7AA',
+    alignItems: 'center',
+  },
+  promptBtnText: {
+    color: theme.accent,
+    fontSize: 12,
+    fontWeight: '700',
+  },
 });
