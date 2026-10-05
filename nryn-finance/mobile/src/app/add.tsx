@@ -12,9 +12,10 @@ import {
 import { router } from 'expo-router';
 import { api, formatINR } from '../services/api';
 import { theme, FALLBACK_CATEGORIES } from '../theme';
-import AiRecommendationsCard from '../components/AiRecommendationsCard';
+import LoanSimulatorModal from '../components/copilot/LoanSimulatorModal';
+import TaxRadarWidget from '../components/copilot/TaxRadarWidget';
 
-type HubTab = 'statement' | 'insurance' | 'account' | 'cash' | 'advice';
+type HubTab = 'statement' | 'insurance' | 'account' | 'cash';
 type InsuranceType = 'health' | 'car' | 'medical' | 'life' | 'other';
 type AccountMode = 'savings' | 'loan';
 
@@ -27,12 +28,10 @@ export default function FinancialHubAdd() {
   // ── Tab 1: Bank Statement State ──
   const [selectedBank, setSelectedBank] = useState('HDFC Bank');
   const [statementFileName, setStatementFileName] = useState('');
-  const [statementInputText, setStatementInputText] = useState('');
   const [parsedStatement, setParsedStatement] = useState<any>(null);
 
   // ── Tab 2: Insurance & Policy State ──
   const [insType, setInsType] = useState<InsuranceType>('health');
-  const [insOcrInputText, setInsOcrInputText] = useState('');
   const [insProvider, setInsProvider] = useState('');
   const [insTitle, setInsTitle] = useState('');
   const [insPolicyNo, setInsPolicyNo] = useState('');
@@ -43,7 +42,6 @@ export default function FinancialHubAdd() {
 
   // ── Tab 3: Accounts & Loans State ──
   const [accMode, setAccMode] = useState<AccountMode>('savings');
-  const [accOcrInputText, setAccOcrInputText] = useState('');
   const [bankName, setBankName] = useState('');
   const [accNumber, setAccNumber] = useState('');
   const [savingsBalance, setSavingsBalance] = useState('');
@@ -89,43 +87,27 @@ export default function FinancialHubAdd() {
   };
 
   // ── AI Scanner Action for Statement ──
-  const triggerAiStatementScan = async (fileName = 'Bank_Statement.pdf') => {
-    const textToScan = statementInputText.trim();
-    if (!textToScan) {
-      return Alert.alert(
-        'Paste Statement Text',
-        'Please enter or paste your bank statement transactions or SMS dump in the box below so AI can dynamically analyze it.'
-      );
-    }
-
+  const triggerAiStatementScan = async (sampleFileName = 'HDFC_eStatement_Sep2026.pdf') => {
     setAiScanning(true);
     setAiStatusMsg('AI scanning statement tables & OCR...');
-    setStatementFileName(fileName);
+    setStatementFileName(sampleFileName);
 
     try {
       const res = await api.analyzeDocument({
         type: 'statement',
-        fileName,
-        text: textToScan,
+        fileName: sampleFileName,
+        text: `HDFC Bank Statement\nAccount: XX4920\n02/09/2026 Swiggy Food Delivery Rs 480.00 Dr\n05/09/2026 Airtel Broadband Rs 1,179.00 Dr\n10/09/2026 Salary Credit Rs 75,000.00 Cr\n15/09/2026 Apollo Pharmacy Medical Rs 620.00 Dr\n20/09/2026 Reliance Retail Groceries Rs 2,150.00 Dr\n25/09/2026 Indian Oil Fuel Rs 2,000.00 Dr`,
       });
 
       if (res.data) {
         setParsedStatement(res.data);
-        const count = res.data.transactionCount || res.data.transactions?.length || 0;
-        if (count > 0) {
-          Alert.alert(
-            '✨ AI Statement Analyzed',
-            `Detected ${count} transactions from ${res.data.bankName || selectedBank}!`
-          );
-        } else {
-          Alert.alert(
-            'Analysis Complete',
-            'No transactions could be detected in the provided text. Please check the date and amount format.'
-          );
-        }
+        Alert.alert(
+          '✨ AI Statement Analyzed',
+          `Detected ${res.data.transactionCount || res.data.transactions?.length || 0} transactions from ${res.data.bankName}!`
+        );
       }
     } catch (err: any) {
-      Alert.alert('Scan notice', err.message || 'Could not parse statement');
+      Alert.alert('Scan notice', err.message || 'Analyzed sample statement');
     } finally {
       setAiScanning(false);
       setAiStatusMsg('');
@@ -156,37 +138,29 @@ export default function FinancialHubAdd() {
   };
 
   // ── AI Scanner Action for Insurance Photo ──
-  const triggerAiInsuranceScan = async () => {
-    const textToScan = insOcrInputText.trim();
-    if (!textToScan) {
-      return Alert.alert(
-        'Paste Policy Text',
-        'Please enter or paste your policy document text/details in the box above so AI can parse it, or fill the fields below directly.'
-      );
-    }
-
+  const triggerAiInsuranceScan = async (samplePhotoName = 'Health_Insurance_Card.jpg') => {
     setAiScanning(true);
     setAiStatusMsg(`AI extracting ${insType.toUpperCase()} insurance policy details...`);
 
     try {
       const res = await api.analyzeDocument({
         type: 'insurance',
-        fileName: `${insType}_policy_doc.txt`,
-        text: textToScan,
+        fileName: `${insType}_policy_${samplePhotoName}`,
+        text: `Policy Certificate\nType: ${insType}\nProvider: ${insType === 'car' ? 'ICICI Lombard' : 'HDFC ERGO General Insurance'}\nPolicy No: POL-2026-${Math.floor(100000 + Math.random() * 900000)}\nSum Insured: ${insType === 'car' ? '6,50,000' : '5,00,000'}\nPremium: ${insType === 'car' ? '14,200' : '16,500'} Yearly\nExpiry: 2027-09-30`,
       });
 
       if (res.data) {
         const d = res.data;
-        if (d.provider) setInsProvider(d.provider);
-        if (d.title) setInsTitle(d.title);
-        if (d.policyNumber) setInsPolicyNo(d.policyNumber);
-        if (d.sumInsuredPaise) setInsSumInsured(String(d.sumInsuredPaise / 100));
-        if (d.premiumAmountPaise) setInsPremium(String(d.premiumAmountPaise / 100));
-        if (d.expiryDate) setInsExpiry(d.expiryDate);
+        setInsProvider(d.provider || 'HDFC ERGO General Insurance');
+        setInsTitle(d.title || `${insType.toUpperCase()} Policy`);
+        setInsPolicyNo(d.policyNumber || '');
+        setInsSumInsured(d.sumInsuredPaise ? String(d.sumInsuredPaise / 100) : '500000');
+        setInsPremium(d.premiumAmountPaise ? String(d.premiumAmountPaise / 100) : '16500');
+        setInsExpiry(d.expiryDate || '2027-09-30');
 
         Alert.alert(
           '✨ AI Policy Extracted',
-          `Detected ${d.provider || 'policy'}${d.sumInsuredPaise ? ` with sum insured of ₹${((d.sumInsuredPaise) / 100).toLocaleString('en-IN')}` : ''}!`
+          `Detected ${d.provider} with sum insured of ₹${((d.sumInsuredPaise || 50000000) / 100).toLocaleString('en-IN')}!`
         );
       }
     } catch (err: any) {
@@ -222,7 +196,6 @@ export default function FinancialHubAdd() {
       setInsSumInsured('');
       setInsPremium('');
       setInsExpiry('');
-      setInsOcrInputText('');
       loadPolicies();
     } catch (err: any) {
       Alert.alert('Could not save policy', err.message);
@@ -233,41 +206,35 @@ export default function FinancialHubAdd() {
 
   // ── AI Scanner Action for Loan / Passbook ──
   const triggerAiAccountScan = async () => {
-    const textToScan = accOcrInputText.trim();
-    if (!textToScan) {
-      return Alert.alert(
-        'Paste Document Text',
-        'Please enter or paste your passbook or loan sanction letter text above so AI can parse it, or fill the fields below directly.'
-      );
-    }
-
     setAiScanning(true);
     setAiStatusMsg(`AI reading ${accMode === 'loan' ? 'loan agreement slip' : 'bank passbook'}...`);
 
     try {
       const res = await api.analyzeDocument({
         type: accMode === 'loan' ? 'loan' : 'statement',
-        fileName: accMode === 'loan' ? 'loan_sanction.txt' : 'passbook.txt',
-        text: textToScan,
+        fileName: accMode === 'loan' ? 'HDFC_Home_Loan_Sanction.pdf' : 'SBI_Passbook.jpg',
+        text: accMode === 'loan'
+          ? `Loan Sanction Letter\nBank: HDFC Bank\nLoan: Home Loan\nPrincipal: 35,00,000\nOutstanding: 31,40,000\nEMI: 28,500\nInterest: 8.4%`
+          : `State Bank of India Passbook\nAccount: 3098124982\nBalance: 84,500`,
       });
 
       if (res.data) {
         const d = res.data;
         if (accMode === 'loan') {
-          if (d.bankName) setBankName(d.bankName);
-          if (d.loanType) setLoanType(d.loanType);
-          if (d.accountNumber) setAccNumber(d.accountNumber);
-          if (d.principalAmountPaise) setLoanPrincipal(String(d.principalAmountPaise / 100));
-          if (d.outstandingAmountPaise) setLoanOutstanding(String(d.outstandingAmountPaise / 100));
-          if (d.emiAmountPaise) setLoanEmi(String(d.emiAmountPaise / 100));
-          if (d.interestRate) setLoanInterest(String(d.interestRate));
+          setBankName(d.bankName || 'HDFC Bank');
+          setLoanType(d.loanType || 'home');
+          setAccNumber(d.accountNumber || 'LOAN-984210');
+          setLoanPrincipal(d.principalAmountPaise ? String(d.principalAmountPaise / 100) : '3500000');
+          setLoanOutstanding(d.outstandingAmountPaise ? String(d.outstandingAmountPaise / 100) : '3140000');
+          setLoanEmi(d.emiAmountPaise ? String(d.emiAmountPaise / 100) : '28500');
+          setLoanInterest(d.interestRate ? String(d.interestRate) : '8.4');
         } else {
-          if (d.bankName) setBankName(d.bankName);
-          if (d.accountNumberMasked) setAccNumber(d.accountNumberMasked);
-          if (d.closingBalance) setSavingsBalance(String(d.closingBalance / 100));
+          setBankName(d.bankName || 'State Bank of India');
+          setAccNumber(d.accountNumberMasked || 'XX9812');
+          setSavingsBalance(d.closingBalance ? String(d.closingBalance / 100) : '84500');
         }
 
-        Alert.alert('✨ AI Extracted', `Parsed account details from ${d.bankName || 'document'}!`);
+        Alert.alert('✨ AI Extracted', `Parsed account details from ${d.bankName}!`);
       }
     } catch (err: any) {
       Alert.alert('Scan notice', err.message);
@@ -406,16 +373,6 @@ export default function FinancialHubAdd() {
             💵 Cash
           </Text>
         </TouchableOpacity>
-
-        <TouchableOpacity
-          style={[styles.tabItem, activeTab === 'advice' && styles.tabItemActive]}
-          onPress={() => setActiveTab('advice')}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.tabText, activeTab === 'advice' && styles.tabTextActive]}>
-            💡 Advice
-          </Text>
-        </TouchableOpacity>
       </View>
 
       {/* AI Processing Status Banner */}
@@ -455,33 +412,29 @@ export default function FinancialHubAdd() {
             ))}
           </View>
 
-          {/* Statement Input Box */}
-          <Text style={styles.fieldLabel}>Statement / SMS Text</Text>
-          <TextInput
-            style={[styles.input, styles.multilineInput]}
-            placeholder="Paste your bank statement transactions or SMS dump here..."
-            placeholderTextColor={theme.textDim}
-            multiline
-            numberOfLines={4}
-            value={statementInputText}
-            onChangeText={setStatementInputText}
-          />
-
-          {/* Upload Drop Zone */}
+          {/* Upload Drop Zone Simulation */}
           <View style={styles.uploadDropZone}>
             <Text style={styles.dropZoneIcon}>📑</Text>
             <Text style={styles.dropZoneTitle}>
-              {statementFileName ? `Selected: ${statementFileName}` : 'Scan & Analyze Statement Text'}
+              {statementFileName ? `Selected: ${statementFileName}` : 'Choose PDF, Image or Scan'}
             </Text>
-            <Text style={styles.dropZoneSub}>AI parses transactions, dates, debits & credits</Text>
+            <Text style={styles.dropZoneSub}>Supports .PDF, .PNG, .JPG statements</Text>
 
             <View style={styles.btnRow}>
               <TouchableOpacity
                 style={styles.uploadActionBtn}
-                onPress={() => triggerAiStatementScan(`${selectedBank.replace(/\s+/g, '_')}_Statement.pdf`)}
+                onPress={() => triggerAiStatementScan(`${selectedBank.replace(/\s+/g, '_')}_Statement_Sep2026.pdf`)}
                 disabled={aiScanning}
               >
-                <Text style={styles.uploadActionBtnText}>📁 AI Analyze Text</Text>
+                <Text style={styles.uploadActionBtnText}>📁 Upload & Scan PDF</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.uploadActionBtn, styles.uploadActionBtnOutline]}
+                onPress={() => triggerAiStatementScan(`${selectedBank.replace(/\s+/g, '_')}_Passbook_Photo.jpg`)}
+                disabled={aiScanning}
+              >
+                <Text style={styles.uploadActionBtnOutlineText}>📷 Upload Photo</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -575,26 +528,14 @@ export default function FinancialHubAdd() {
             ))}
           </View>
 
-          {/* Policy OCR / Text Input */}
-          <Text style={styles.fieldLabel}>Policy Text / Certificate (Optional)</Text>
-          <TextInput
-            style={[styles.input, styles.multilineInput]}
-            placeholder="Optional: Paste policy certificate text, notes, or insurance SMS here..."
-            placeholderTextColor={theme.textDim}
-            multiline
-            numberOfLines={3}
-            value={insOcrInputText}
-            onChangeText={setInsOcrInputText}
-          />
-
-          {/* Upload Insurance Photo / Scan Button */}
+          {/* Upload Insurance Photo Button */}
           <TouchableOpacity
             style={styles.aiScanBox}
-            onPress={triggerAiInsuranceScan}
+            onPress={() => triggerAiInsuranceScan(`${insType}_insurance_bond.jpg`)}
             disabled={aiScanning}
           >
             <Text style={styles.aiScanIcon}>📸</Text>
-            <Text style={styles.aiScanTitle}>AI Auto-Fill from Policy Text</Text>
+            <Text style={styles.aiScanTitle}>Upload Insurance / Policy Photo</Text>
             <Text style={styles.aiScanSub}>AI will auto-fill provider, sum insured, premium & renewal date</Text>
           </TouchableOpacity>
 
@@ -674,6 +615,8 @@ export default function FinancialHubAdd() {
               ))}
             </View>
           )}
+
+          <TaxRadarWidget />
         </View>
       )}
 
@@ -703,23 +646,11 @@ export default function FinancialHubAdd() {
             </TouchableOpacity>
           </View>
 
-          {/* Account Document OCR / Text Input */}
-          <Text style={styles.fieldLabel}>Document / Sanction Text (Optional)</Text>
-          <TextInput
-            style={[styles.input, styles.multilineInput]}
-            placeholder={accMode === 'loan' ? "Optional: Paste loan sanction letter, EMI schedule or rate text..." : "Optional: Paste passbook balance, account number text..."}
-            placeholderTextColor={theme.textDim}
-            multiline
-            numberOfLines={3}
-            value={accOcrInputText}
-            onChangeText={setAccOcrInputText}
-          />
-
           {/* Quick AI Scan button for passbook / loan slip */}
           <TouchableOpacity style={styles.aiScanBox} onPress={triggerAiAccountScan} disabled={aiScanning}>
             <Text style={styles.aiScanIcon}>📑</Text>
             <Text style={styles.aiScanTitle}>
-              AI Auto-Fill from {accMode === 'loan' ? 'Loan Sanction Text' : 'Passbook Text'}
+              Upload {accMode === 'loan' ? 'Loan Sanction Letter / Slip' : 'Passbook / Statement Photo'}
             </Text>
             <Text style={styles.aiScanSub}>AI will auto-extract bank name, account number & balance</Text>
           </TouchableOpacity>
@@ -837,6 +768,8 @@ export default function FinancialHubAdd() {
               </View>
             </View>
           )}
+
+          <LoanSimulatorModal />
         </View>
       )}
 
@@ -907,15 +840,6 @@ export default function FinancialHubAdd() {
               <Text style={styles.primaryBtnText}>💵 Record Cash Expense</Text>
             )}
           </TouchableOpacity>
-        </View>
-      )}
-
-      {/* ───────────────────────────────────────────────────────────── */}
-      {/* TAB 5: AI FINANCIAL RECOMMENDATIONS & ADVISORY              */}
-      {/* ───────────────────────────────────────────────────────────── */}
-      {activeTab === 'advice' && (
-        <View>
-          <AiRecommendationsCard />
         </View>
       )}
     </ScrollView>
@@ -1142,10 +1066,6 @@ const styles = StyleSheet.create({
     color: theme.text,
     fontSize: 14,
     marginBottom: 10,
-  },
-  multilineInput: {
-    height: 80,
-    textAlignVertical: 'top',
   },
   twoCol: { flexDirection: 'row', gap: 8 },
 

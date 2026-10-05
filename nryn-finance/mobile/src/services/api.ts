@@ -88,9 +88,63 @@ export const api = {
   createCashExpense: (expense: { amount: number; merchantName?: string; note?: string; category?: string; occurredAt?: string }) =>
     request<{ ok: boolean; transaction: any }>('/cash-expense', { method: 'POST', body: JSON.stringify(expense) }),
 
-  // AI Smart Recommendations
-  getRecommendations: () =>
-    request<{ ok: boolean; count: number; recommendations: any[] }>('/ai/recommendations'),
+  // ── AI Financial Copilot Endpoints ──
+  copilotChat: (message: string, history: any[] = []) =>
+    request<{ ok: boolean; reply: string; insights?: any; suggestedFollowUps?: string[] }>('/copilot/chat', {
+      method: 'POST',
+      body: JSON.stringify({ message, history }),
+    }),
+  getSafeSpend: (month?: string) =>
+    request<{
+      ok: boolean;
+      month: string;
+      currentDay: number;
+      daysRemaining: number;
+      dailySafeSpendINR: number;
+      todaySpentINR: number;
+      todayRemainingINR: number;
+      burnStatus: 'green' | 'amber' | 'red';
+      projectedRunoutDate: string | null;
+      insightMessage: string;
+    }>(`/copilot/safe-to-spend${month ? `?month=${month}` : ''}`),
+  getAnomalies: () =>
+    request<{ ok: boolean; count: number; anomalies: any[] }>('/copilot/anomalies'),
+  getSubscriptions: () =>
+    request<{
+      ok: boolean;
+      count: number;
+      totalMonthlyRecurringINR: number;
+      totalAnnualCostINR: number;
+      potentialAnnualSavingsINR: number;
+      subscriptions: any[];
+    }>('/copilot/subscriptions'),
+  simulateLoan: (params: {
+    principalAmount: number;
+    annualInterestRate: number;
+    tenureMonths: number;
+    currentEmi?: number;
+    extraMonthlyPrepayment: number;
+  }) =>
+    request<{
+      ok: boolean;
+      principalINR: number;
+      baselineEmiINR: number;
+      totalInterestSavedINR: number;
+      monthsSaved: number;
+      yearsSaved: number;
+      newTenureMonths: number;
+      recommendation: string;
+    }>('/copilot/loan-simulator', { method: 'POST', body: JSON.stringify(params) }),
+  getTaxRadar: () =>
+    request<{
+      ok: boolean;
+      financialYear: string;
+      section80C: any;
+      section80D: any;
+      totalDeductionClaimedINR: number;
+      potentialTaxSavingsINR: number;
+      actionableTip: string;
+    }>('/copilot/tax-radar'),
 };
 
 export const rupees = (paise: number) => (paise || 0) / 100;

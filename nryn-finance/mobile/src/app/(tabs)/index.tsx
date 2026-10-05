@@ -9,7 +9,10 @@ import CategoryChip from '../../components/CategoryChip';
 import ExpenseRow from '../../components/ExpenseRow';
 import PaceBanner from '../../components/PaceBanner';
 import ExpensesCircularGraph from '../../components/ExpensesCircularGraph';
-import AiRecommendationsCard from '../../components/AiRecommendationsCard';
+import SafeSpendGauge from '../../components/copilot/SafeSpendGauge';
+import AnomalyAlertBanner from '../../components/copilot/AnomalyAlertBanner';
+import SubscriptionCard from '../../components/copilot/SubscriptionCard';
+import CopilotDrawer from '../../components/copilot/CopilotDrawer';
 
 
 
@@ -22,17 +25,28 @@ export default function Home() {
   const [refreshing, setRefreshing] = useState(false);
   const [loading, setLoading] = useState(true);
 
+  // Copilot Live State
+  const [safeSpend, setSafeSpend] = useState<any>(null);
+  const [anomalies, setAnomalies] = useState<any[]>([]);
+  const [subs, setSubs] = useState<any>(null);
+
   const load = useCallback(async (m?: string) => {
     try {
-      const [mo, st, tx] = await Promise.all([
+      const [mo, st, tx, ss, an, sb] = await Promise.all([
         api.months(),
         api.budgetStatus(m),
         api.transactions({ month: m, sort, limit: '30' }),
+        api.getSafeSpend(m).catch(() => null),
+        api.getAnomalies().catch(() => ({ anomalies: [] })),
+        api.getSubscriptions().catch(() => null),
       ]);
       setMonths(mo.months);
       setStatus(st);
       setMonth(st.period.month);
       setTxns(tx.transactions);
+      if (ss?.ok) setSafeSpend(ss);
+      if (an?.anomalies) setAnomalies(an.anomalies);
+      if (sb?.ok) setSubs(sb);
     } finally {
       setLoading(false);
     }
@@ -83,23 +97,28 @@ export default function Home() {
   const lastMonthSpentRupees = ((comparison?.lastMonthSpent || 0) / 100).toLocaleString('en-IN');
 
   return (
-    <ScrollView
-      style={{ backgroundColor: theme.bg }}
-      contentContainerStyle={{ paddingBottom: 40 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}
-    >
-      <View style={styles.header}>
-        <Text style={styles.hello}>NRYN Finance</Text>
-        {status?.needsReview > 0 && (
-          <TouchableOpacity onPress={() => router.push('/transactions?needsReview=true')} style={styles.reviewPill}>
-            <Text style={styles.reviewText}>{status.needsReview} to review</Text>
-          </TouchableOpacity>
-        )}
-      </View>
+    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ paddingBottom: 80 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}
+      >
+        <View style={styles.header}>
+          <Text style={styles.hello}>NRYN Finance</Text>
+          {status?.needsReview > 0 && (
+            <TouchableOpacity onPress={() => router.push('/transactions?needsReview=true')} style={styles.reviewPill}>
+              <Text style={styles.reviewText}>{status.needsReview} to review</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
-      <MonthSwitcher months={months} value={month} onChange={(m) => { setMonth(m); load(m); }} />
+        <AnomalyAlertBanner anomalies={anomalies} />
 
-      <View style={styles.spendCard}>
+        <MonthSwitcher months={months} value={month} onChange={(m) => { setMonth(m); load(m); }} />
+
+        <SafeSpendGauge data={safeSpend} />
+
+        <View style={styles.spendCard}>
         <View style={styles.cardHeaderRow}>
           <Text style={styles.cardHeaderTitle}>Monthly Spending Overview</Text>
           <Text style={styles.cardHeaderBadge}>{status?.period?.shortLabel || 'Current'}</Text>
@@ -181,14 +200,14 @@ export default function Home() {
         </ScrollView>
       )}
 
-      <AiRecommendationsCard />
-
       <ExpensesCircularGraph
         currentSort={sort}
         onSelectSort={handleSelectSort}
         txns={txns}
         totalCount={txns.length}
       />
+
+      <SubscriptionCard data={subs} />
 
       <View style={styles.listHeader}>
         <Text style={styles.listTitle}>Expense Transactions</Text>
@@ -212,7 +231,11 @@ export default function Home() {
         </TouchableOpacity>
       )}
     </ScrollView>
-  );
+
+    {/* Floating Autonomous AI Copilot Drawer */}
+    <CopilotDrawer />
+  </View>
+);
 }
 
 const styles = StyleSheet.create({

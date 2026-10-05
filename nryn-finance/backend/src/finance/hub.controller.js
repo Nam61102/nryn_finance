@@ -257,16 +257,3 @@ exports.createCashExpense = async (req, res, next) => {
     next(err);
   }
 };
-
-// ── 6. AI Smart Recommendations & Insights ─────────────────────────────────
-const recommendationService = require('../ai/recommendation.service');
-
-exports.getRecommendations = async (req, res, next) => {
-  try {
-    const data = await recommendationService.generateRecommendations(req.userId);
-    return res.json(data);
-  } catch (err) {
-    next(err);
-  }
-};
-

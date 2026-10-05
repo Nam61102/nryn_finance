@@ -44,6 +44,7 @@ app.get('/api/health', async (req, res) => {
 
 app.use('/api/auth', require('./src/routes/auth.routes'));
 app.use('/api/ingest', require('./src/routes/ingest.routes'));
+app.use('/api/copilot', require('./src/routes/copilot.routes'));
 app.use('/api', require('./src/routes/finance.routes'));
 
 app.use((req, res) => res.status(404).json({ error: 'not_found', path: req.path }));
