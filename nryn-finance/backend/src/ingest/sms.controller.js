@@ -1,6 +1,7 @@
 'use strict';
 const Device = require('../db/models/Device');
 const RawMessage = require('../db/models/RawMessage');
+const Transaction = require('../db/models/Transaction');
 const { ingestBatch } = require('./ingest.service');
 const { drainPending } = require('../parse/parse.service');
 
@@ -154,4 +155,67 @@ async function seedDemo(req, res) {
   }
 }
 
-module.exports = { postSms, getCursor, markBackfillDone, ingestStats, seedDemo };
+async function resetData(req, res) {
+  try {
+    const userId = req.userId;
+    const tx = await Transaction.deleteMany({ userId });
+    const raw = await RawMessage.deleteMany({ userId });
+    await Device.updateMany({ userId }, { $set: { lastSmsDate: 0, backfillDoneAt: null } });
+    res.json({
+      ok: true,
+      deletedTransactions: tx.deletedCount || 0,
+      deletedMessages: raw.deletedCount || 0,
+      message: 'All transactions and SMS data wiped successfully.',
+    });
+  } catch (err) {
+    console.error('resetData error', err);
+    res.status(500).json({ error: 'reset_failed', message: err.message });
+  }
+}
+
+async function pasteSms(req, res) {
+  try {
+    const { text, sender } = req.body || {};
+    if (!text || typeof text !== 'string' || !text.trim()) {
+      return res.status(400).json({ error: 'text_required', message: 'SMS text is required' });
+    }
+
+    const chunks = text
+      .split(/(?:\r?\n\s*\r?\n)+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+
+    if (!chunks.length) {
+      return res.status(400).json({ error: 'empty_text', message: 'No valid SMS content found' });
+    }
+
+    const messages = chunks.map((body, idx) => ({
+      smsId: `paste-${Date.now()}-${idx}`,
+      sender: sender || 'BANK-SMS',
+      body,
+      receivedAt: Date.now(),
+    }));
+
+    const result = await ingestBatch({ userId: req.userId, source: 'sms', messages });
+    const drainStats = await drainPending({ limit: 100 });
+
+    const recentTxns = await Transaction.find({ userId: req.userId, deletedAt: null })
+      .sort({ occurredAt: -1, createdAt: -1 })
+      .limit(Math.max(messages.length, 10))
+      .lean();
+
+    res.json({
+      ok: true,
+      accepted: result.accepted,
+      duplicates: result.duplicates,
+      rejected: result.rejected,
+      parsed: drainStats,
+      transactions: recentTxns,
+    });
+  } catch (err) {
+    console.error('pasteSms error', err);
+    res.status(500).json({ error: 'paste_failed', message: err.message });
+  }
+}
+
+module.exports = { postSms, getCursor, markBackfillDone, ingestStats, seedDemo, resetData, pasteSms };

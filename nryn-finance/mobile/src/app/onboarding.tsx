@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform, Alert, ActivityIndicator, TextInput } from 'react-native';
 import { router } from 'expo-router';
-import { Check, X, Shield, ArrowRight, Sparkles, Database } from 'lucide-react-native';
+import { Check, X, Shield, ArrowRight, Sparkles, Database, FileText, Globe } from 'lucide-react-native';
 import { requestPermission, isSupported } from '../native/sms.reader';
 import { syncSms, markBackfillDone, type SyncProgress } from '../sync/sms.sync';
 import { registerBackgroundSync } from '../sync/background.task';
@@ -14,7 +14,7 @@ import { setItem } from '../services/storage';
 
 /**
  * Reading your bank SMS — Onboarding screen.
- * Explains SMS privacy and triggers permission / inbox scan or sample demo data.
+ * Explains SMS privacy and triggers permission / inbox scan, real SMS paste, or sample demo data.
  */
 export default function Onboarding() {
   const theme = useTheme();
@@ -23,6 +23,9 @@ export default function Onboarding() {
   const [granted, setGranted] = useState(false);
   const [loadingDemo, setLoadingDemo] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [pastedSms, setPastedSms] = useState('');
+  const [pastingSms, setPastingSms] = useState(false);
+  const [pasteSuccess, setPasteSuccess] = useState<string | null>(null);
 
   const finishAndGo = async () => {
     await setItem('nryn_finance_onboarded', 'true');
@@ -64,6 +67,39 @@ export default function Onboarding() {
     }
   };
 
+  const handlePasteSms = async () => {
+    if (!pastedSms.trim()) {
+      triggerHaptic('warning');
+      return Alert.alert('Empty SMS', 'Please paste a real bank transaction SMS.');
+    }
+    triggerHaptic('medium');
+    setPastingSms(true);
+    setPasteSuccess(null);
+    try {
+      const res = await api.pasteSms(pastedSms.trim());
+      if (res.accepted > 0 && res.transactions?.length > 0) {
+        triggerHaptic('success');
+        const count = res.transactions.length;
+        setPasteSuccess(`Successfully parsed ${count} real transaction${count > 1 ? 's' : ''}!`);
+        await setItem('nryn_finance_onboarded', 'true');
+        setTimeout(() => {
+          router.replace('/(tabs)');
+        }, 1200);
+      } else {
+        triggerHaptic('error');
+        Alert.alert(
+          'Could Not Parse SMS',
+          'We could not find recognized bank transaction patterns in the pasted text. Please verify it is a bank debit or credit SMS message.'
+        );
+      }
+    } catch (err: any) {
+      triggerHaptic('error');
+      Alert.alert('Error', err?.message || 'Failed to process pasted SMS');
+    } finally {
+      setPastingSms(false);
+    }
+  };
+
   const start = async () => {
     triggerHaptic('medium');
     setSyncing(true);
@@ -85,45 +121,35 @@ export default function Onboarding() {
               router.replace('/(tabs)');
             }, 600);
             return;
+          } else if (res.phase === 'error') {
+            Alert.alert('SMS Sync Notice', res.error || 'No SMS could be read from device.');
+            setSyncing(false);
+            return;
+          } else {
+            Alert.alert('No Bank SMS Found', 'We scanned your inbox but did not find any bank transaction SMS messages.');
+            setSyncing(false);
+            return;
           }
+        } else {
+          Alert.alert('Permission Denied', 'SMS permission is required to automatically read bank messages on Android.');
+          setSyncing(false);
+          return;
         }
-      } catch (err) {
-        console.warn('Native SMS sync error, proceeding to sample feed', err);
+      } catch (err: any) {
+        console.warn('Native SMS sync error', err);
+        Alert.alert('Sync Error', err?.message || 'Failed to scan inbox.');
+        setSyncing(false);
+        return;
       }
     }
 
-    // 2. Web, Expo Go or when 0 messages read:
-    // Seamlessly populate sample transactions so the user NEVER sees 0 0!
-    setProgress({
-      phase: 'reading',
-      read: 24,
-      kept: 20,
-      uploaded: 12,
-      duplicates: 0,
-      rejected: { non_transactional: 4 },
-    });
-    try {
-      await api.seedDemo();
-      triggerHaptic('success');
-      setProgress({
-        phase: 'done',
-        read: 24,
-        kept: 20,
-        uploaded: 20,
-        duplicates: 0,
-        rejected: { non_transactional: 4 },
-      });
-      await setItem('nryn_finance_onboarded', 'true');
-      setTimeout(() => {
-        router.replace('/(tabs)');
-      }, 700);
-    } catch (err) {
-      console.warn('seedDemo error', err);
-      await setItem('nryn_finance_onboarded', 'true');
-      router.replace('/(tabs)');
-    } finally {
-      setSyncing(false);
-    }
+    // 2. Web or unsupported platform:
+    setSyncing(false);
+    Alert.alert(
+      'Web Browser Notice',
+      'Google Chrome and Web Browsers cannot access your phone inbox due to Android OS security protections.\n\nPlease paste your real bank SMS in the box below, or skip to start clean with ₹0.',
+      [{ text: 'OK' }]
+    );
   };
 
   return (
@@ -159,6 +185,58 @@ export default function Onboarding() {
           </Text>
         </View>
 
+        {Platform.OS === 'web' && (
+          <View style={styles.webNoticeCard}>
+            <View style={styles.webBadgeRow}>
+              <Globe size={18} color="#FF9800" />
+              <Text style={styles.webBadgeTitle}>Web Browser Mode (Chrome / Netlify)</Text>
+            </View>
+            <Text style={styles.webNoticeText}>
+              Web browsers cannot read your phone's SMS inbox due to Android OS security restrictions. Automatic SMS scanning runs inside the Android app.
+            </Text>
+            <Text style={[styles.webNoticeText, { marginTop: 6, fontWeight: '700' }]}>
+              To see your genuine bank data right now, paste your bank SMS below:
+            </Text>
+          </View>
+        )}
+
+        {/* Real SMS Ingestion Box */}
+        <View style={styles.pasteCard}>
+          <View style={styles.pasteHeaderRow}>
+            <FileText size={18} color={theme.colors.accent} />
+            <Text style={styles.pasteCardTitle}>Paste Your Real Bank SMS</Text>
+          </View>
+          <Text style={styles.pasteSub}>
+            Copy any debit/credit SMS from your bank (HDFC, SBI, ICICI, Axis, Kotak, UPI) and paste it here. We will instantly extract the real amount, merchant, and bank!
+          </Text>
+          <TextInput
+            style={styles.pasteInput}
+            placeholder="e.g. Rs.450.00 debited from a/c XX1234 on 13-10-26 to VPA zomato@ybl. Ref 42871928374."
+            placeholderTextColor={theme.colors.textDim}
+            multiline
+            numberOfLines={4}
+            value={pastedSms}
+            onChangeText={setPastedSms}
+          />
+
+          {pasteSuccess && (
+            <View style={styles.pasteSuccessBadge}>
+              <Check size={16} color="#10B981" />
+              <Text style={styles.pasteSuccessText}>{pasteSuccess}</Text>
+            </View>
+          )}
+
+          <Button
+            title={pastingSms ? 'Parsing Your SMS…' : 'Parse & Record Real Transaction'}
+            onPress={handlePasteSms}
+            loading={pastingSms}
+            size="md"
+            variant="primary"
+            icon={<ArrowRight size={16} color="#FFFFFF" />}
+            style={{ marginTop: 10, backgroundColor: theme.colors.accent }}
+          />
+        </View>
+
         {progress && (
           <View style={styles.card}>
             <Text style={styles.cardTitle}>
@@ -182,7 +260,13 @@ export default function Onboarding() {
         )}
 
         <Button
-          title={syncing ? 'Scanning & Reading Bank SMS…' : 'Allow SMS access'}
+          title={
+            Platform.OS === 'web'
+              ? 'Allow SMS access (Android APK Only)'
+              : syncing
+              ? 'Scanning & Reading Bank SMS…'
+              : 'Allow SMS access'
+          }
           onPress={start}
           loading={syncing || progress?.phase === 'reading' || progress?.phase === 'uploading'}
           size="lg"
@@ -192,7 +276,7 @@ export default function Onboarding() {
         />
 
         <Button
-          title={loadingDemo ? 'Loading Sample Data…' : 'Load Sample Bank Data (Demo)'}
+          title={loadingDemo ? 'Loading Sample Data…' : 'Load Sample Data (Preview Only — Dummy Spends)'}
           onPress={loadSampleData}
           loading={loadingDemo}
           size="md"
@@ -202,7 +286,7 @@ export default function Onboarding() {
         />
 
         <PressableScale onPress={finishAndGo} style={styles.skipWrap}>
-          <Text style={styles.skip}>Skip — I'll add expenses manually</Text>
+          <Text style={styles.skip}>Skip — Start with Clean Account (₹0 Spends)</Text>
         </PressableScale>
       </View>
     </ScrollView>
@@ -302,6 +386,80 @@ const useStyles = makeStyles((t) =>
       color: t.colors.textDim,
       fontSize: 13,
       fontWeight: '500',
+    },
+    webNoticeCard: {
+      backgroundColor: '#FFF8E1',
+      borderRadius: 16,
+      padding: 16,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: '#FFE082',
+    },
+    webBadgeRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 6,
+    },
+    webBadgeTitle: {
+      color: '#B78103',
+      fontSize: 14,
+      fontWeight: '800',
+    },
+    webNoticeText: {
+      color: '#5D4037',
+      fontSize: 12,
+      lineHeight: 18,
+    },
+    pasteCard: {
+      backgroundColor: t.colors.card,
+      borderRadius: 20,
+      padding: 18,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: t.colors.accent,
+    },
+    pasteHeaderRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginBottom: 6,
+    },
+    pasteCardTitle: {
+      color: t.colors.text,
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    pasteSub: {
+      color: t.colors.textDim,
+      fontSize: 12,
+      lineHeight: 18,
+      marginBottom: 12,
+    },
+    pasteInput: {
+      backgroundColor: t.colors.bg,
+      borderRadius: 12,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      padding: 12,
+      color: t.colors.text,
+      fontSize: 13,
+      textAlignVertical: 'top',
+      minHeight: 80,
+    },
+    pasteSuccessBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      backgroundColor: '#E8F5E9',
+      padding: 10,
+      borderRadius: 8,
+      marginTop: 10,
+    },
+    pasteSuccessText: {
+      color: '#2E7D32',
+      fontSize: 13,
+      fontWeight: '700',
     },
   })
 );

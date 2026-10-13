@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, TextInput, Platform } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { Sun, Moon, Smartphone, RefreshCw, LogOut, CheckCircle2 } from 'lucide-react-native';
+import { Sun, Moon, Smartphone, RefreshCw, LogOut, CheckCircle2, Trash2, FileText, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { api, clearToken, API_BASE } from '../../services/api';
 import { deleteItem } from '../../services/storage';
 import { syncSms, getDeviceId } from '../../sync/sms.sync';
@@ -15,6 +15,10 @@ export default function Profile() {
   const [stats, setStats] = useState<any>(null);
   const [deviceId, setDeviceId] = useState('');
   const [syncing, setSyncing] = useState(false);
+  const [resettingData, setResettingData] = useState(false);
+  const [showPasteBox, setShowPasteBox] = useState(false);
+  const [pastedSms, setPastedSms] = useState('');
+  const [pastingSms, setPastingSms] = useState(false);
 
   const load = useCallback(async () => {
     setDeviceId(await getDeviceId());
@@ -23,6 +27,63 @@ export default function Profile() {
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
+
+  const handleResetData = () => {
+    haptic.warning();
+    Alert.alert(
+      'Wipe All Transactions & Data?',
+      'This will permanently delete all demo and transaction records from your account so your dashboard resets to clean ₹0 with 0 fake data.\n\nAre you sure?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Wipe & Reset',
+          style: 'destructive',
+          onPress: async () => {
+            setResettingData(true);
+            try {
+              const res = await api.resetData();
+              haptic.success();
+              Alert.alert('Data Wiped', res.message || 'All demo and transaction data has been cleared.');
+              load();
+            } catch (err: any) {
+              haptic.error();
+              Alert.alert('Reset Failed', err?.message || 'Could not reset data.');
+            } finally {
+              setResettingData(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handlePasteSms = async () => {
+    if (!pastedSms.trim()) {
+      haptic.warning();
+      return Alert.alert('Empty SMS', 'Please paste a real bank transaction SMS.');
+    }
+    haptic.medium();
+    setPastingSms(true);
+    try {
+      const res = await api.pasteSms(pastedSms.trim());
+      if (res.accepted > 0 && res.transactions?.length > 0) {
+        haptic.success();
+        setPastedSms('');
+        setShowPasteBox(false);
+        const count = res.transactions.length;
+        Alert.alert('SMS Parsed Successfully', `Parsed and added ${count} real transaction(s) to your dashboard!`);
+        load();
+      } else {
+        haptic.error();
+        Alert.alert('Could Not Parse SMS', 'We could not detect recognized bank transaction details in the text.');
+      }
+    } catch (err: any) {
+      haptic.error();
+      Alert.alert('Error', err?.message || 'Failed to parse SMS');
+    } finally {
+      setPastingSms(false);
+    }
+  };
 
   const resync = async () => {
     setSyncing(true);
@@ -120,6 +181,73 @@ export default function Profile() {
         <Row label="Device ID" value={deviceId ? `${deviceId.slice(0, 16)}...` : 'Unknown'} />
       </View>
 
+      {/* Real SMS Ingest Tool */}
+      <View style={styles.card}>
+        <TouchableOpacity
+          style={styles.accordionHeader}
+          onPress={() => setShowPasteBox(!showPasteBox)}
+          activeOpacity={0.8}
+        >
+          <View style={styles.btnRow}>
+            <FileText size={18} color={theme.accent} />
+            <Text style={styles.cardTitle}>Paste Real Bank SMS</Text>
+          </View>
+          {showPasteBox ? <ChevronUp size={18} color={theme.textDim} /> : <ChevronDown size={18} color={theme.textDim} />}
+        </TouchableOpacity>
+
+        {showPasteBox && (
+          <View style={{ marginTop: 10 }}>
+            <Text style={styles.cardSub}>
+              Paste any transaction SMS from your bank (HDFC, SBI, ICICI, Kotak, Axis, UPI). We will parse it and add the genuine spend to your dashboard.
+            </Text>
+            <TextInput
+              style={styles.pasteInput}
+              placeholder="e.g. Rs.450.00 debited from a/c XX1234 on 13-10-26 to VPA zomato@ybl. Ref 42871928374."
+              placeholderTextColor={theme.textDim}
+              multiline
+              numberOfLines={3}
+              value={pastedSms}
+              onChangeText={setPastedSms}
+            />
+            <TouchableOpacity
+              style={[styles.btnPrimary, { marginTop: 10, backgroundColor: theme.accent }]}
+              onPress={handlePasteSms}
+              disabled={pastingSms}
+              activeOpacity={0.85}
+            >
+              {pastingSms ? (
+                <ActivityIndicator color="#FFFFFF" size="small" />
+              ) : (
+                <Text style={styles.btnPrimaryText}>Parse & Record Real Transaction</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
+
+      {/* Data Management & Wipe Fake Data */}
+      <View style={[styles.card, { borderColor: theme.dangerBorder }]}>
+        <Text style={[styles.cardTitle, { color: theme.danger }]}>Data Reset & Privacy</Text>
+        <Text style={styles.cardSub}>
+          Remove all demo or test transactions from your account to start fresh with genuine ₹0 data.
+        </Text>
+        <TouchableOpacity
+          style={[styles.btnDanger, { marginTop: 4, backgroundColor: '#FFEBEE', borderColor: '#FFCDD2' }]}
+          onPress={handleResetData}
+          disabled={resettingData}
+          activeOpacity={0.85}
+        >
+          {resettingData ? (
+            <ActivityIndicator color={theme.danger} size="small" />
+          ) : (
+            <View style={styles.btnRow}>
+              <Trash2 size={16} color={theme.danger} />
+              <Text style={styles.btnDangerText}>Wipe All Transactions & Reset to ₹0</Text>
+            </View>
+          )}
+        </TouchableOpacity>
+      </View>
+
       {/* Actions */}
       <TouchableOpacity style={styles.btnPrimary} onPress={resync} disabled={syncing} activeOpacity={0.85}>
         {syncing ? (
@@ -127,7 +255,9 @@ export default function Profile() {
         ) : (
           <View style={styles.btnRow}>
             <RefreshCw size={18} color="#FFFFFF" />
-            <Text style={styles.btnPrimaryText}>Re-scan SMS Inbox</Text>
+            <Text style={styles.btnPrimaryText}>
+              {Platform.OS === 'web' ? 'Re-scan SMS (Android APK Only)' : 'Re-scan SMS Inbox'}
+            </Text>
           </View>
         )}
       </TouchableOpacity>
@@ -242,5 +372,21 @@ const useStyles = makeStyles((t: Theme) =>
       marginTop: 12,
     },
     btnDangerText: { color: t.danger, fontWeight: '800', fontSize: 15 },
+    accordionHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    pasteInput: {
+      backgroundColor: t.cardAlt,
+      borderRadius: t.radius.sm,
+      borderWidth: 1,
+      borderColor: t.border,
+      padding: 12,
+      color: t.text,
+      fontSize: 13,
+      textAlignVertical: 'top',
+      minHeight: 70,
+    },
   })
 );
