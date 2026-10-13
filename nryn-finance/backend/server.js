@@ -15,8 +15,22 @@ const RawMessage = require('./src/db/models/RawMessage');
 const cookieParser = require('cookie-parser');
 
 const app = express();
-app.use(helmet());
-app.use(cors({ origin: env.corsOrigins.length ? env.corsOrigins : true, credentials: true }));
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || !env.corsOrigins.length) return callback(null, true);
+      if (
+        env.corsOrigins.includes(origin) ||
+        /\.netlify\.app$/.test(origin) ||
+        /localhost|127\.0\.0\.1/.test(origin)
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
+    credentials: true,
+  })
+);
 app.use(cookieParser());
 
 // Allow 10mb only for document analysis and bank statement imports; 1mb globally everywhere else

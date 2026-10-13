@@ -52,6 +52,7 @@ export const api = {
 
   login: (email: string, password: string) => request<{ token: string; user: any }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (email: string, password: string, name?: string) => request<{ token: string; user: any }>('/auth/register', { method: 'POST', body: JSON.stringify({ email, password, name }) }),
+  resetPassword: (email: string, newPassword: string) => request<{ ok: boolean; message: string }>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ email, newPassword }) }),
 
   budgetStatus: (month?: string) => request<any>(`/budgets/status${month ? `?month=${month}` : ''}`),
   months: () => request<{ months: any[] }>('/analytics/months'),

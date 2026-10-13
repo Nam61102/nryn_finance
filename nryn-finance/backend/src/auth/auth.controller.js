@@ -24,11 +24,53 @@ async function register(req, res) {
 
 async function login(req, res) {
   const { email, password } = req.body || {};
-  const user = await User.findOne({ email: String(email || '').toLowerCase() });
-  if (!user || !(await bcrypt.compare(String(password || ''), user.passwordHash))) {
-    return res.status(401).json({ error: 'invalid_credentials' });
+  if (!email || !password) {
+    return res.status(400).json({ error: 'email_and_password_required', message: 'Email and password are required.' });
   }
+
+  const user = await User.findOne({ email: String(email || '').toLowerCase() });
+  if (!user) {
+    return res.status(404).json({
+      error: 'user_not_found',
+      message: 'No account found with this email. Please create an account.',
+    });
+  }
+
+  const isMatch = await bcrypt.compare(String(password || ''), user.passwordHash);
+  if (!isMatch) {
+    return res.status(401).json({
+      error: 'invalid_credentials',
+      message: 'Incorrect password. Please try again or tap "Forgot Password?".',
+    });
+  }
+
   res.json({ token: sign(user), user: { id: user._id, email: user.email, name: user.name } });
+}
+
+async function resetPassword(req, res) {
+  const { email, newPassword } = req.body || {};
+  if (!email || !newPassword || String(newPassword).length < 8) {
+    return res.status(400).json({
+      error: 'email_and_8char_password_required',
+      message: 'Email and a new password with at least 8 characters are required.',
+    });
+  }
+
+  const user = await User.findOne({ email: String(email).toLowerCase() });
+  if (!user) {
+    return res.status(404).json({
+      error: 'user_not_found',
+      message: 'No account found with this email address.',
+    });
+  }
+
+  user.passwordHash = await bcrypt.hash(newPassword, 10);
+  await user.save();
+
+  return res.json({
+    ok: true,
+    message: 'Password reset successfully. You can now sign in with your new password.',
+  });
 }
 
 async function me(req, res) {
@@ -57,4 +99,4 @@ async function updateTaxRegime(req, res) {
   res.json({ ok: true, user });
 }
 
-module.exports = { register, login, me, updateAccounts, updateTaxRegime };
+module.exports = { register, login, resetPassword, me, updateAccounts, updateTaxRegime };
