@@ -7,6 +7,7 @@ router.use(requireAuth);
 router.post('/sms', c.postSms);
 router.get('/cursor', c.getCursor);
 router.post('/backfill-done', c.markBackfillDone);
+router.post('/seed-demo', c.seedDemo);
 router.get('/stats', c.ingestStats);
 
 module.exports = router;

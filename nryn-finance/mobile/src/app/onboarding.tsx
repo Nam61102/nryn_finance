@@ -1,223 +1,191 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
-import { Check, X, Shield, ArrowRight, Smartphone } from 'lucide-react-native';
+import { Check, X, Shield, ArrowRight, Sparkles, Database } from 'lucide-react-native';
 import { requestPermission, isSupported } from '../native/sms.reader';
 import { syncSms, markBackfillDone, type SyncProgress } from '../sync/sms.sync';
 import { registerBackgroundSync } from '../sync/background.task';
-import { setItem } from '../services/storage';
 import { useTheme, makeStyles } from '../theme';
 import { triggerHaptic } from '../utils/haptics';
 import PressableScale from '../components/ui/PressableScale';
 import Button from '../components/ui/Button';
+import { api } from '../services/api';
+import { setItem } from '../services/storage';
 
 /**
- * The explainer screen comes BEFORE the system dialog. Without it people deny
- * the permission and the app silently does nothing forever.
+ * Reading your bank SMS — Onboarding screen.
+ * Explains SMS privacy and triggers permission / inbox scan or sample demo data.
  */
 export default function Onboarding() {
   const theme = useTheme();
   const styles = useStyles();
   const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [granted, setGranted] = useState(false);
+  const [loadingDemo, setLoadingDemo] = useState(false);
+
+  const finishAndGo = async () => {
+    await setItem('nryn_finance_onboarded', 'true');
+    router.replace('/(tabs)');
+  };
+
+  const loadSampleData = async () => {
+    triggerHaptic('medium');
+    setLoadingDemo(true);
+    try {
+      await api.seedDemo();
+      triggerHaptic('success');
+      Alert.alert(
+        'Sample Bank Data Loaded! 🎉',
+        'Realistic bank transaction messages (HDFC, SBI, ICICI, Swiggy, Blinkit, Salary) and budgets have been generated for your account.',
+        [{ text: 'View Dashboard', onPress: finishAndGo }]
+      );
+    } catch (err: any) {
+      triggerHaptic('error');
+      const msg = err.body?.message || err.message || 'Could not load sample data.';
+      Alert.alert('Notice', `${msg}\nTaking you to dashboard.`, [
+        { text: 'OK', onPress: finishAndGo },
+      ]);
+    } finally {
+      setLoadingDemo(false);
+    }
+  };
 
   const start = async () => {
     triggerHaptic('medium');
 
-    // On Web / unsupported platforms (Expo Go, iOS, browser)
-    if (!isSupported()) {
-      setGranted(true);
-      setProgress({
-        phase: 'reading',
-        read: 48,
-        kept: 12,
-        uploaded: 0,
-        duplicates: 0,
-        rejected: { otp: 20, promo: 16 },
-      });
+    // 1. Android Native Environment
+    if (Platform.OS === 'android') {
+      const ok = await requestPermission();
+      setGranted(ok);
 
-      setTimeout(() => {
-        setProgress({
-          phase: 'uploading',
-          read: 48,
-          kept: 12,
-          uploaded: 12,
-          duplicates: 0,
-          rejected: { otp: 20, promo: 16 },
-        });
-      }, 600);
+      if (ok && isSupported()) {
+        await registerBackgroundSync().catch(() => {});
+        const res = await syncSms({ full: true, onProgress: setProgress });
+        if (res.phase === 'error') {
+          triggerHaptic('error');
+          Alert.alert(
+            'Sync Notice',
+            res.error || 'Failed to scan SMS inbox.',
+            [
+              { text: 'Load Sample Data', onPress: loadSampleData },
+              { text: 'Go to Dashboard', onPress: finishAndGo },
+            ]
+          );
+          return;
+        }
 
-      setTimeout(async () => {
-        setProgress({
-          phase: 'done',
-          read: 48,
-          kept: 12,
-          uploaded: 12,
-          duplicates: 0,
-          rejected: { otp: 20, promo: 16 },
-        });
+        if (res.read === 0 || res.kept === 0) {
+          triggerHaptic('warning');
+          Alert.alert(
+            'No Bank SMS Found',
+            'No bank transaction messages were detected in your inbox.\n\nWould you like to load realistic sample bank transactions (HDFC, SBI, Swiggy, Salary) so your charts and AI copilot have full data?',
+            [
+              { text: 'Load Sample Data', onPress: loadSampleData },
+              { text: 'Continue to Dashboard', onPress: finishAndGo },
+            ]
+          );
+          return;
+        }
+
         triggerHaptic('success');
         await markBackfillDone();
-        await setItem('nryn_finance_onboarded', 'true');
-        setTimeout(() => {
-          router.replace('/(tabs)');
-        }, 800);
-      }, 1400);
-      return;
+        await finishAndGo();
+        return;
+      }
     }
 
-    // On native Android
-    const ok = await requestPermission();
-    setGranted(ok);
-    if (!ok) {
-      triggerHaptic('warning');
-      Alert.alert(
-        'Permission required',
-        'Please grant SMS permission in settings to automatically track bank expenses.'
-      );
-      return;
-    }
-    await registerBackgroundSync().catch(() => {});
-    const res = await syncSms({ full: true, onProgress: setProgress });
-    if (res.phase === 'error') {
-      triggerHaptic('error');
-      Alert.alert('Sync failed', res.error || 'Failed to scan SMS inbox.');
-      return;
-    }
-    if (res.read === 0) {
-      triggerHaptic('warning');
-      Alert.alert(
-        'No SMS Read',
-        'Could not read any messages from the inbox. Please ensure SMS permission is granted in Android App Settings.',
-        [
-          { text: 'Try Again', onPress: () => start() },
-          {
-            text: 'Continue to Dashboard',
-            onPress: async () => {
-              await markBackfillDone();
-              await setItem('nryn_finance_onboarded', 'true');
-              router.replace('/(tabs)');
-            },
-          },
-        ]
-      );
-      return;
-    }
-    if (res.kept === 0) {
-      const breakdown = Object.entries(res.rejected || {})
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(', ');
-      Alert.alert(
-        'Scan Finished',
-        `Read ${res.read} messages, but 0 bank transaction messages were identified (${breakdown}). You can add expenses manually or pull down to refresh anytime.`,
-        [
-          {
-            text: 'Continue to Dashboard',
-            onPress: async () => {
-              await markBackfillDone();
-              await setItem('nryn_finance_onboarded', 'true');
-              router.replace('/(tabs)');
-            },
-          },
-        ]
-      );
-      return;
-    }
-    triggerHaptic('success');
-    await markBackfillDone();
-    await setItem('nryn_finance_onboarded', 'true');
-    router.replace('/(tabs)');
-  };
-
-  const handleSkip = async () => {
-    triggerHaptic('light');
-    await markBackfillDone();
-    await setItem('nryn_finance_onboarded', 'true');
-    router.replace('/(tabs)');
+    // 2. Web, Expo Go or environment without native SMS provider
+    Alert.alert(
+      'SMS Access Notice',
+      Platform.OS === 'android' && !isSupported()
+        ? 'Automatic SMS reading requires a standalone Android APK build (Expo Go cannot access device SMS).\n\nWould you like to load realistic sample bank transactions so your dashboard is fully populated with charts and AI insights?'
+        : 'Web browsers cannot access phone SMS.\n\nWould you like to load realistic sample bank transactions (HDFC, SBI, ICICI, Swiggy, Salary) so your dashboard is fully populated?',
+      [
+        { text: 'Load Sample Bank Data', onPress: loadSampleData },
+        { text: 'Continue to Dashboard', style: 'cancel', onPress: finishAndGo },
+      ]
+    );
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.wrap}>
-      <View style={styles.shieldWrap}>
-        <Shield size={36} color={theme.colors.accent} />
-      </View>
+    <ScrollView contentContainerStyle={styles.wrap} showsVerticalScrollIndicator={false}>
+      <View style={styles.contentContainer}>
+        <View style={styles.shieldWrap}>
+          <Shield size={36} color={theme.colors.accent} />
+        </View>
 
-      <Text style={styles.h1}>Reading your bank SMS</Text>
-      <Text style={styles.p}>
-        Your bank texts you every time money moves. This app reads those texts on
-        this phone so you never type an expense again.
-      </Text>
-
-      {Platform.OS === 'web' && (
-        <View style={styles.webNotice}>
-          <Smartphone size={18} color={theme.colors.accent} />
-          <Text style={styles.webNoticeText}>
-            Web & Mobile Connected: In the Android app, real SMS inbox auto-syncs. On web, tap Allow SMS Access to enable smart transaction tracking.
-          </Text>
-        </View>
-      )}
-
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>What actually leaves your phone</Text>
-        <View style={styles.liRow}>
-          <Check size={16} color="#10B981" />
-          <Text style={styles.li}>Bank and UPI transaction messages only</Text>
-        </View>
-        <View style={styles.liRow}>
-          <X size={16} color="#FF4757" />
-          <Text style={styles.li}>Messages from people — never read, never sent</Text>
-        </View>
-        <View style={styles.liRow}>
-          <X size={16} color="#FF4757" />
-          <Text style={styles.li}>OTPs — explicitly excluded before anything is uploaded</Text>
-        </View>
-        <Text style={styles.note}>
-          The filter runs on this device, before the network call. Roughly 850 of
-          20,000 messages pass it. This is how the app is built, not a promise.
+        <Text style={styles.h1}>Reading your bank SMS</Text>
+        <Text style={styles.p}>
+          Your bank texts you every time money moves. This app reads those texts on
+          this phone so you never type an expense again.
         </Text>
-      </View>
 
-      {progress && (
         <View style={styles.card}>
-          <Text style={styles.cardTitle}>
-            {progress.phase === 'done'
-              ? 'Scan Complete 🎉'
-              : progress.phase === 'error'
-              ? 'Problem Occurred'
-              : 'Scanning your inbox…'}
+          <Text style={styles.cardTitle}>What actually leaves your phone</Text>
+          <View style={styles.liRow}>
+            <Check size={16} color="#10B981" />
+            <Text style={styles.li}>Bank and UPI transaction messages only</Text>
+          </View>
+          <View style={styles.liRow}>
+            <X size={16} color="#FF4757" />
+            <Text style={styles.li}>Messages from people — never read, never sent</Text>
+          </View>
+          <View style={styles.liRow}>
+            <X size={16} color="#FF4757" />
+            <Text style={styles.li}>OTPs — explicitly excluded before anything is uploaded</Text>
+          </View>
+          <Text style={styles.note}>
+            The filter runs on this device, before the network call. Roughly 850 of
+            20,000 messages pass it. This is how the app is built, not a promise.
           </Text>
-          <Text style={styles.progText}>Read {progress.read} messages</Text>
-          <Text style={styles.progText}>Bank messages found: {progress.kept}</Text>
-          <Text style={styles.progText}>
-            Uploaded {progress.uploaded} · duplicates {progress.duplicates}
-          </Text>
-          {progress.error && (
-            <Text style={[styles.progText, { color: theme.colors.danger }]}>
-              {progress.error}
-            </Text>
-          )}
         </View>
-      )}
 
-      <Button
-        title={
-          granted
-            ? progress?.phase === 'done'
-              ? 'Access Granted! 🎉'
-              : 'Scanning & Connecting…'
-            : 'Allow SMS Access'
-        }
-        onPress={start}
-        loading={progress?.phase === 'reading' || progress?.phase === 'uploading'}
-        size="lg"
-        variant="primary"
-        icon={<ArrowRight size={18} color="#0B0F0D" />}
-        style={styles.btn}
-      />
+        {progress && (
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>
+              {progress.phase === 'done'
+                ? 'Scan Complete'
+                : progress.phase === 'error'
+                ? 'Problem Occurred'
+                : 'Scanning your inbox…'}
+            </Text>
+            <Text style={styles.progText}>Read {progress.read} messages</Text>
+            <Text style={styles.progText}>Bank messages found: {progress.kept}</Text>
+            <Text style={styles.progText}>
+              Uploaded {progress.uploaded} · duplicates {progress.duplicates}
+            </Text>
+            {progress.error && (
+              <Text style={[styles.progText, { color: theme.colors.danger }]}>
+                {progress.error}
+              </Text>
+            )}
+          </View>
+        )}
 
-      <PressableScale onPress={handleSkip} style={styles.skipWrap}>
-        <Text style={styles.skip}>Skip — I'll add expenses manually</Text>
-      </PressableScale>
+        <Button
+          title={granted ? 'Scanning…' : 'Allow SMS access'}
+          onPress={start}
+          loading={progress?.phase === 'reading' || progress?.phase === 'uploading'}
+          size="lg"
+          variant="primary"
+          icon={<ArrowRight size={18} color="#FFFFFF" />}
+          style={styles.btn}
+        />
+
+        <Button
+          title={loadingDemo ? 'Loading Sample Data…' : 'Load Sample Bank Data (Demo)'}
+          onPress={loadSampleData}
+          loading={loadingDemo}
+          size="md"
+          variant="secondary"
+          icon={<Database size={16} color={theme.colors.accent} />}
+          style={styles.demoBtn}
+        />
+
+        <PressableScale onPress={finishAndGo} style={styles.skipWrap}>
+          <Text style={styles.skip}>Skip — I'll add expenses manually</Text>
+        </PressableScale>
+      </View>
     </ScrollView>
   );
 }
@@ -230,11 +198,17 @@ const useStyles = makeStyles((t) =>
       padding: 24,
       justifyContent: 'center',
     },
+    contentContainer: {
+      maxWidth: 480,
+      width: '100%',
+      alignSelf: 'center',
+      paddingVertical: 20,
+    },
     shieldWrap: {
       width: 64,
       height: 64,
       borderRadius: 20,
-      backgroundColor: t.colors.accentLight,
+      backgroundColor: t.colors.accentLight || '#FFF3E0',
       alignItems: 'center',
       justifyContent: 'center',
       marginBottom: 20,
@@ -250,25 +224,7 @@ const useStyles = makeStyles((t) =>
       color: t.colors.textDim,
       fontSize: 14,
       lineHeight: 22,
-      marginBottom: 20,
-    },
-    webNotice: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 10,
-      backgroundColor: t.colors.accentLight,
-      padding: 12,
-      borderRadius: 14,
-      marginBottom: 18,
-      borderWidth: 1,
-      borderColor: t.colors.accent + '33',
-    },
-    webNoticeText: {
-      flex: 1,
-      fontSize: 12,
-      color: t.colors.text,
-      lineHeight: 17,
-      fontWeight: '500',
+      marginBottom: 24,
     },
     card: {
       backgroundColor: t.colors.card,
@@ -310,11 +266,18 @@ const useStyles = makeStyles((t) =>
     },
     btn: {
       marginTop: 6,
+      backgroundColor: '#FF5722',
+    },
+    demoBtn: {
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      backgroundColor: t.colors.card,
     },
     skipWrap: {
       alignSelf: 'center',
-      marginTop: 18,
-      paddingVertical: 6,
+      marginTop: 20,
+      paddingVertical: 8,
     },
     skip: {
       color: t.colors.textDim,

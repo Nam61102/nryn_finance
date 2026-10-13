@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { View, ScrollView, RefreshControl, StyleSheet, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, RefreshControl, StyleSheet, Alert } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Inbox } from 'lucide-react-native';
 import { api } from '../../services/api';
@@ -218,13 +218,23 @@ export default function Home() {
           />
 
           {recentTxns.length === 0 ? (
-            <EmptyState
-              icon={<Inbox size={28} color={theme.accent} />}
-              title="No expenses recorded yet"
-              subtitle={`No transactions found in ${status?.period?.label || 'this period'}. Pull down to sync SMS, or add manually.`}
-              actionTitle="Add Expense"
-              onAction={() => router.push('/add')}
-            />
+            <View>
+              <EmptyState
+                icon={<Inbox size={28} color={theme.accent} />}
+                title="No expenses recorded yet"
+                subtitle={`No transactions found in ${status?.period?.label || 'this period'}. Pull down to sync SMS, or load sample bank data.`}
+                actionTitle="SMS Setup / Load Sample Data"
+                onAction={() => router.push('/onboarding')}
+              />
+              <TouchableOpacity
+                onPress={() => router.push('/add')}
+                style={{ alignSelf: 'center', marginTop: -8, marginBottom: 16, padding: 8 }}
+              >
+                <Text style={{ color: theme.textDim, fontSize: 13, fontWeight: '500' }}>
+                  or + Add expense manually
+                </Text>
+              </TouchableOpacity>
+            </View>
           ) : (
             recentTxns.map((t) => (
               <ExpenseRow

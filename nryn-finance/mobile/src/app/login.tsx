@@ -59,7 +59,7 @@ export default function Login() {
   const [forgotBusy, setForgotBusy] = useState(false);
 
   const navigateToApp = () => {
-    router.replace('/onboarding');
+    router.replace('/onboarding' as any);
   };
 
   const handleRegisterDirect = async (regEmail: string, regPass: string, regName?: string) => {
@@ -70,7 +70,7 @@ export default function Login() {
       triggerHaptic('success');
       setSuccessInfo({
         title: 'Account Created Successfully! 🎉',
-        message: 'Welcome to NRYN Finance! Taking you to SMS access setup...',
+        message: 'Welcome to NRYN Finance! Taking you to your dashboard...',
       });
       setTimeout(navigateToApp, 1100);
     } catch (err: any) {
@@ -90,7 +90,7 @@ export default function Login() {
       triggerHaptic('success');
       setSuccessInfo({
         title: 'Sign In Successful! 🎉',
-        message: `Welcome back${res.user?.name ? `, ${res.user.name}` : ''}! Taking you to SMS access setup...`,
+        message: `Welcome back${res.user?.name ? `, ${res.user.name}` : ''}! Taking you to your dashboard...`,
       });
       setTimeout(navigateToApp, 1100);
     } catch (err: any) {
@@ -131,7 +131,7 @@ export default function Login() {
         triggerHaptic('success');
         setSuccessInfo({
           title: 'Sign In Successful! 🎉',
-          message: `Welcome back${res.user?.name ? `, ${res.user.name}` : ''}! Taking you to SMS access setup...`,
+          message: `Welcome back${res.user?.name ? `, ${res.user.name}` : ''}! Taking you to your dashboard...`,
         });
         setTimeout(navigateToApp, 1100);
       } else {
@@ -140,7 +140,7 @@ export default function Login() {
         triggerHaptic('success');
         setSuccessInfo({
           title: 'Account Created Successfully! 🎉',
-          message: 'Welcome to NRYN Finance! Taking you to SMS access setup...',
+          message: 'Welcome to NRYN Finance! Taking you to your dashboard...',
         });
         setTimeout(navigateToApp, 1100);
       }

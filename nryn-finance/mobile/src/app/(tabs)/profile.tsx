@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIn
 import { router, useFocusEffect } from 'expo-router';
 import { Sun, Moon, Smartphone, RefreshCw, LogOut, CheckCircle2 } from 'lucide-react-native';
 import { api, clearToken, API_BASE } from '../../services/api';
+import { deleteItem } from '../../services/storage';
 import { syncSms, getDeviceId } from '../../sync/sms.sync';
 import { useTheme, makeStyles, Theme } from '../../theme';
 import { haptic } from '../../utils/haptics';
@@ -132,10 +133,22 @@ export default function Profile() {
       </TouchableOpacity>
 
       <TouchableOpacity
+        style={[styles.btnPrimary, { backgroundColor: theme.cardAlt, borderWidth: 1, borderColor: theme.border, marginTop: 10 }]}
+        onPress={() => router.push('/onboarding')}
+        activeOpacity={0.85}
+      >
+        <View style={styles.btnRow}>
+          <Smartphone size={18} color={theme.accent} />
+          <Text style={[styles.btnPrimaryText, { color: theme.text }]}>SMS Setup & Permissions</Text>
+        </View>
+      </TouchableOpacity>
+
+      <TouchableOpacity
         style={styles.btnDanger}
         onPress={async () => {
           haptic.warning();
           await clearToken();
+          await deleteItem('nryn_finance_onboarded');
           router.replace('/login');
         }}
         activeOpacity={0.85}
