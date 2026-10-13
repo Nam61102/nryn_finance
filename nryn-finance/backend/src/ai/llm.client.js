@@ -36,7 +36,7 @@ async function chatMessages(messages, { timeoutMs = 15000, forCopilot = false } 
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${key}`,
-          ...(p.name === 'openrouter' ? { 'HTTP-Referer': 'https://nryn-finance-wqtv.onrender.com', 'X-Title': 'NRYN Finance' } : {}),
+          ...(p.name === 'openrouter' ? { 'HTTP-Referer': 'https://nryn-finance-backend.onrender.com', 'X-Title': 'NRYN Finance' } : {}),
         },
         body: JSON.stringify({
           model: p.model(),
@@ -82,7 +82,7 @@ async function chatStream(messages, onChunk, { timeoutMs = 20000, forCopilot = t
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${key}`,
-          ...(p.name === 'openrouter' ? { 'HTTP-Referer': 'https://nryn-finance-wqtv.onrender.com', 'X-Title': 'NRYN Finance' } : {}),
+          ...(p.name === 'openrouter' ? { 'HTTP-Referer': 'https://nryn-finance-backend.onrender.com', 'X-Title': 'NRYN Finance' } : {}),
         },
         body: JSON.stringify({
           model: p.model(),

@@ -1,7 +1,7 @@
 import { Platform } from 'react-native';
 import { getItem, setItem, deleteItem } from './storage';
 
-const RAW_BASE = process.env.EXPO_PUBLIC_API_URL || 'https://nryn-finance-wqtv.onrender.com';
+const RAW_BASE = process.env.EXPO_PUBLIC_API_URL || 'https://nryn-finance-backend.onrender.com';
 export const API_BASE = RAW_BASE.replace(/\/$/, '');
 
 const TOKEN_KEY = 'nryn_finance_token';
