@@ -1,16 +1,18 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { theme } from '../theme';
+import { ThemeProvider, useTheme } from '../theme';
 
-export default function RootLayout() {
+function RootNavigator() {
+  const theme = useTheme();
+
   return (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style={theme.isDark ? 'light' : 'dark'} />
       <Stack
         screenOptions={{
           headerShown: false,
           contentStyle: { backgroundColor: theme.bg },
-          animation: 'none',
+          animation: 'fade',
         }}
       >
         <Stack.Screen name="index" />
@@ -22,5 +24,13 @@ export default function RootLayout() {
         <Stack.Screen name="transaction/[id]" />
       </Stack>
     </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <ThemeProvider>
+      <RootNavigator />
+    </ThemeProvider>
   );
 }

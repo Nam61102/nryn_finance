@@ -1,5 +1,5 @@
 'use strict';
-const { processChat } = require('./copilot.service');
+const { processChat, streamChat } = require('./copilot.service');
 const { calculateSafeSpend } = require('./safespend.service');
 const { detectAnomalies } = require('./anomaly.service');
 const { detectSubscriptions } = require('./subscription.service');
@@ -16,6 +16,19 @@ exports.chat = async (req, res, next) => {
     }
     const result = await processChat(req.userId, message, history);
     return res.json(result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── 1b. Streaming Conversational Chat (SSE + Rich Blocks) ──
+exports.chatStream = async (req, res, next) => {
+  try {
+    const { message, history } = req.body;
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ error: 'message_required', message: 'A chat message string is required.' });
+    }
+    await streamChat(req.userId, message, history, res);
   } catch (err) {
     next(err);
   }
@@ -62,7 +75,14 @@ exports.simulateLoan = async (req, res, next) => {
       currentEmi,
       extraMonthlyPrepayment,
       lumpSumPrepayment
-    } = req.body;
+    } = req.body || {};
+
+    if (!principalAmount || !annualInterestRate || !tenureMonths) {
+      return res.status(400).json({
+        error: 'invalid_loan_inputs',
+        message: 'principalAmount, annualInterestRate, and tenureMonths are required.'
+      });
+    }
 
     const result = calculateLoanPrepayment({
       principalAmount,
@@ -75,6 +95,9 @@ exports.simulateLoan = async (req, res, next) => {
 
     return res.json(result);
   } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.code || 'invalid_request', message: err.message });
+    }
     next(err);
   }
 };

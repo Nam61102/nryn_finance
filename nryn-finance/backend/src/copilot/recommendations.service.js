@@ -3,6 +3,8 @@ const Transaction = require('../db/models/Transaction');
 const Budget = require('../db/models/Budget');
 const { chatJSON, isEnabled } = require('../ai/llm.client');
 
+const { resolveMonth } = require('../finance/period');
+
 /**
  * 100% Dynamic AI Recommendation Engine
  * Analyzes live transactions to detect merchant-level & category-level overspending,
@@ -10,40 +12,25 @@ const { chatJSON, isEnabled } = require('../ai/llm.client');
  * NEVER returns hardcoded/static dummy cards.
  */
 async function generateRecommendations(userId, monthStr) {
-  const now = new Date();
-  let targetYear, targetMonth;
+  const p = resolveMonth(monthStr);
+  const prevP = resolveMonth(p.prev);
 
-  if (monthStr && /^\d{4}-\d{2}$/.test(monthStr)) {
-    const parts = monthStr.split('-');
-    targetYear = parseInt(parts[0], 10);
-    targetMonth = parseInt(parts[1], 10) - 1;
-  } else {
-    targetYear = now.getFullYear();
-    targetMonth = now.getMonth();
-  }
-
-  const startOfMonth = new Date(Date.UTC(targetYear, targetMonth, 1));
-  const endOfMonth = new Date(Date.UTC(targetYear, targetMonth + 1, 0, 23, 59, 59, 999));
-
-  // Previous month dates for delta comparisons
-  const prevMonthStart = new Date(Date.UTC(targetYear, targetMonth - 1, 1));
-  const prevMonthEnd = new Date(Date.UTC(targetYear, targetMonth, 0, 23, 59, 59, 999));
-
-  // 1. Fetch current month and previous month real transactions
-  const [currentTxns, prevTxns, budgetDoc] = await Promise.all([
+  // 1. Fetch current month and previous month real transactions in IST (soft deletes excluded)
+  const [currentTxns, prevTxns] = await Promise.all([
     Transaction.find({
       userId,
       direction: 'debit',
       isExpense: true,
-      occurredAt: { $gte: startOfMonth, $lte: endOfMonth }
+      deletedAt: null,
+      occurredAt: { $gte: p.start, $lte: p.end },
     }).lean(),
     Transaction.find({
       userId,
       direction: 'debit',
       isExpense: true,
-      occurredAt: { $gte: prevMonthStart, $lte: prevMonthEnd }
+      deletedAt: null,
+      occurredAt: { $gte: prevP.start, $lte: prevP.end },
     }).lean(),
-    Budget.findOne({ userId, scope: 'total', month: { $in: [monthStr, null] } }).lean().catch(() => null)
   ]);
 
   const totalSpentPaise = currentTxns.reduce((sum, t) => sum + (t.amount || 0), 0);
@@ -209,7 +196,7 @@ async function generateRecommendations(userId, monthStr) {
 
   return {
     ok: true,
-    month: `${targetYear}-${String(targetMonth + 1).padStart(2, '0')}`,
+    month: p.month,
     count: recommendations.length,
     hasOverspending: recommendations.length > 0,
     totalSpentINR,

@@ -22,6 +22,7 @@ const UserSchema = new Schema({
     refreshToken: String,
     lastSyncAt: Date,
   },
+  taxRegime: { type: String, enum: ['new', 'old', null], default: null },
 }, { timestamps: true, collection: 'fin_users' });
 
 module.exports = model('User', UserSchema);

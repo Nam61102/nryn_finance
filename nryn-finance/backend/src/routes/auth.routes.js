@@ -10,5 +10,6 @@ router.post('/register', limiter, c.register);
 router.post('/login', limiter, c.login);
 router.get('/me', requireAuth, c.me);
 router.patch('/accounts', requireAuth, c.updateAccounts);
+router.patch('/tax-regime', requireAuth, c.updateTaxRegime);
 
 module.exports = router;

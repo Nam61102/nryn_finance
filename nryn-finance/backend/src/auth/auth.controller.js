@@ -48,4 +48,13 @@ async function updateAccounts(req, res) {
   res.json({ user });
 }
 
-module.exports = { register, login, me, updateAccounts };
+async function updateTaxRegime(req, res) {
+  const { taxRegime } = req.body || {};
+  if (taxRegime !== null && !['new', 'old'].includes(taxRegime)) {
+    return res.status(400).json({ error: 'invalid_tax_regime', message: 'taxRegime must be "new", "old", or null' });
+  }
+  const user = await User.findByIdAndUpdate(req.userId, { $set: { taxRegime } }, { new: true }).select('-passwordHash -gmail.refreshToken').lean();
+  res.json({ ok: true, user });
+}
+
+module.exports = { register, login, me, updateAccounts, updateTaxRegime };

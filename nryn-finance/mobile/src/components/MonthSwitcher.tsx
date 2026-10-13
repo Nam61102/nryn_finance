@@ -1,31 +1,63 @@
 import React from 'react';
 import { ScrollView, Text, TouchableOpacity, StyleSheet, View } from 'react-native';
-import { theme } from '../theme';
+import { useTheme, makeStyles, Theme } from '../theme';
+import { haptic } from '../utils/haptics';
 
 type M = { month: string; shortLabel: string; isCurrent: boolean; isFuture: boolean };
 
-/**
- * Only renders months that actually have data (plus the current one), so the
- * switcher can never page into an empty 2019. A future month is DISABLED,
- * not hidden — hiding it makes the control look broken on the 1st.
- */
-export default function MonthSwitcher({ months, value, onChange }: { months: M[]; value: string; onChange: (m: string) => void }) {
+export default function MonthSwitcher({
+  months,
+  value,
+  onChange,
+}: {
+  months: M[];
+  value: string;
+  onChange: (m: string) => void;
+}) {
+  const theme = useTheme();
+  const styles = useStyles();
+
   const ordered = [...months].sort((a, b) => a.month.localeCompare(b.month));
+
+  const handlePress = (mStr: string) => {
+    haptic.light();
+    onChange(mStr);
+  };
+
   return (
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.wrap}>
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      contentContainerStyle={styles.wrap}
+    >
       {ordered.map((m) => {
         const active = m.month === value;
         return (
           <TouchableOpacity
             key={m.month}
             disabled={m.isFuture}
-            onPress={() => onChange(m.month)}
-            style={[styles.pill, active && styles.pillActive, m.isFuture && styles.pillDisabled]}
+            onPress={() => handlePress(m.month)}
+            activeOpacity={0.8}
+            style={[
+              styles.pill,
+              active && styles.pillActive,
+              m.isFuture && styles.pillDisabled,
+            ]}
           >
-            <Text style={[styles.text, active && styles.textActive, m.isFuture && styles.textDisabled]}>{m.shortLabel}</Text>
+            <Text
+              style={[
+                styles.text,
+                active && styles.textActive,
+                m.isFuture && styles.textDisabled,
+              ]}
+            >
+              {m.shortLabel}
+            </Text>
             {m.isCurrent && (
-              <View style={[styles.now, active && { backgroundColor: '#0B0F0D' }]}>
-                <Text style={[styles.nowText, active && { color: theme.accent }]}>NOW</Text>
+              <View style={[styles.now, active && styles.nowActive]}>
+                <Text style={[styles.nowText, active && styles.nowTextActive]}>
+                  NOW
+                </Text>
               </View>
             )}
           </TouchableOpacity>
@@ -35,36 +67,57 @@ export default function MonthSwitcher({ months, value, onChange }: { months: M[]
   );
 }
 
-const styles = StyleSheet.create({
-  wrap: { gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: theme.card,
-    borderWidth: 1,
-    borderColor: theme.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 3,
-    elevation: 1,
-  },
-  pillActive: {
-    backgroundColor: theme.accent,
-    borderColor: theme.accent,
-    shadowColor: theme.accent,
-    shadowOpacity: 0.35,
-    shadowRadius: 6,
-    elevation: 3,
-  },
-  pillDisabled: { opacity: 0.35 },
-  text: { color: theme.textDim, fontWeight: '600', fontSize: 13 },
-  textActive: { color: '#FFFFFF', fontWeight: '800' },
-  textDisabled: { color: theme.textDim },
-  now: { backgroundColor: 'rgba(255, 109, 0, 0.15)', borderRadius: 6, paddingHorizontal: 5, paddingVertical: 1 },
-  nowText: { fontSize: 9, fontWeight: '800', color: theme.accent },
-});
+const useStyles = makeStyles((t: Theme) =>
+  StyleSheet.create({
+    wrap: { gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
+    pill: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+      paddingHorizontal: 14,
+      paddingVertical: 8,
+      borderRadius: 999,
+      backgroundColor: t.card,
+      borderWidth: 1,
+      borderColor: t.border,
+      ...t.shadows.sm,
+    },
+    pillActive: {
+      backgroundColor: t.accent,
+      borderColor: t.accent,
+      ...t.shadows.glow,
+    },
+    pillDisabled: {
+      opacity: 0.35,
+    },
+    text: {
+      color: t.textDim,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    textActive: {
+      color: '#FFFFFF',
+      fontWeight: '800',
+    },
+    textDisabled: {
+      color: t.textDim,
+    },
+    now: {
+      backgroundColor: t.cardAlt,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+      borderRadius: 6,
+    },
+    nowActive: {
+      backgroundColor: 'rgba(255, 255, 255, 0.25)',
+    },
+    nowText: {
+      color: t.accent,
+      fontSize: 9,
+      fontWeight: '800',
+    },
+    nowTextActive: {
+      color: '#FFFFFF',
+    },
+  })
+);

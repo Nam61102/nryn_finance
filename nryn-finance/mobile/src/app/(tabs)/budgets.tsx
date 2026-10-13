@@ -1,20 +1,34 @@
-import { useCallback, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert, ActivityIndicator, RefreshControl } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  ScrollView,
+  Alert,
+  ActivityIndicator,
+  RefreshControl,
+} from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { api, formatINR } from '../../services/api';
-import { theme, FALLBACK_CATEGORIES } from '../../theme';
+import { RefreshCw, Check } from 'lucide-react-native';
+import { api } from '../../services/api';
+import { useTheme, makeStyles, Theme, FALLBACK_CATEGORIES } from '../../theme';
+import { formatINR } from '../../utils/format';
+import { haptic } from '../../utils/haptics';
+import BudgetRing from '../../components/BudgetRing';
+import { BudgetsSkeleton } from '../../components/skeletons';
 
-/**
- * Total and per-category budgets. Total is deliberately NOT forced to equal
- * the sum of categories — the difference is surfaced as "unallocated" instead,
- * because forcing them equal makes editing any single category a fight (§7A).
- */
 export default function Budgets() {
+  const theme = useTheme();
+  const styles = useStyles();
+
   const [status, setStatus] = useState<any>(null);
   const [cats, setCats] = useState(FALLBACK_CATEGORIES);
   const [draft, setDraft] = useState<Record<string, string>>({});
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     try {
@@ -29,6 +43,8 @@ export default function Budgets() {
       setDraft(d);
     } catch (err: any) {
       console.error('Failed to load budgets:', err);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -36,6 +52,7 @@ export default function Budgets() {
 
   const onRefresh = async () => {
     setRefreshing(true);
+    haptic.light();
     await load();
     setRefreshing(false);
   };
@@ -53,15 +70,18 @@ export default function Budgets() {
 
     try {
       setSavingKey(key);
+      haptic.medium();
       await api.post('/budgets', {
         scope,
         category: scope === 'total' ? null : category,
         amount: value,
       });
       await load();
+      haptic.success();
       const label = scope === 'total' ? 'Monthly total budget' : (cats.find(c => c.key === category)?.label || category);
-      Alert.alert('Budget Saved', `${label} set to ₹${value.toLocaleString('en-IN')}`);
+      Alert.alert('✅ Budget Saved', `${label} set to ₹${value.toLocaleString('en-IN')}`);
     } catch (err: any) {
+      haptic.error();
       console.error('Save budget error:', err);
       Alert.alert('Save Failed', err?.message || 'Could not save budget. Please check your connection.');
     } finally {
@@ -69,26 +89,54 @@ export default function Budgets() {
     }
   };
 
-  if (!status) return <View style={styles.center}><ActivityIndicator color={theme.accent} /></View>;
+  if (loading && !status) return <BudgetsSkeleton />;
+
+  const ring = status?.ring;
 
   return (
     <ScrollView
-      style={{ backgroundColor: theme.bg }}
-      contentContainerStyle={{ padding: 16, paddingTop: 56, paddingBottom: 40 }}
-      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor={theme.accent}
+          colors={[theme.accent]}
+        />
+      }
     >
       <View style={styles.topHeader}>
         <View>
-          <Text style={styles.h1}>Budgets</Text>
-          <Text style={styles.sub}>{status.period.label} · carries forward every month</Text>
+          <Text style={styles.h1}>Budgets & Limits</Text>
+          <Text style={styles.sub}>{status?.period?.label || 'Current Month'} · Carries forward monthly</Text>
         </View>
-        <TouchableOpacity style={styles.headerRefreshBtn} onPress={onRefresh} disabled={refreshing}>
-          <Text style={styles.headerRefreshText}>🔄</Text>
+        <TouchableOpacity
+          style={styles.headerRefreshBtn}
+          onPress={onRefresh}
+          disabled={refreshing}
+          activeOpacity={0.7}
+        >
+          <RefreshCw size={18} color={theme.textDim} />
         </TouchableOpacity>
       </View>
 
+      {/* Interactive Budget Ring */}
+      {ring && ring.total > 0 && (
+        <View style={styles.ringCard}>
+          <BudgetRing
+            total={ring.total}
+            spent={ring.spent}
+            remaining={ring.remaining}
+            ratio={ring.ratio}
+            over={ring.over}
+          />
+        </View>
+      )}
+
+      {/* Monthly Total Budget Card */}
       <View style={styles.card}>
-        <Text style={styles.rowLabel}>Total monthly budget</Text>
+        <Text style={styles.rowLabel}>Total Monthly Budget</Text>
         <View style={styles.inputRow}>
           <Text style={styles.rupee}>₹</Text>
           <TextInput
@@ -113,11 +161,11 @@ export default function Budgets() {
           </TouchableOpacity>
         </View>
         <Text style={styles.hint}>
-          Unallocated: {formatINR(status.unallocated)} {status.unallocated < 0 ? '(categories exceed your total)' : ''}
+          Unallocated: {formatINR(status?.unallocated || 0)} {status?.unallocated < 0 ? '(categories exceed your total)' : ''}
         </Text>
       </View>
 
-      <Text style={styles.section}>Per category</Text>
+      <Text style={styles.sectionTitle}>Category Allocations</Text>
       {cats.filter((c) => !['income', 'transfer'].includes(c.key)).map((c) => (
         <View key={c.key} style={styles.card}>
           <Text style={styles.rowLabel}>{c.icon}  {c.label}</Text>
@@ -150,57 +198,84 @@ export default function Budgets() {
   );
 }
 
-const styles = StyleSheet.create({
-  center: { flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' },
-  h1: { color: theme.text, fontSize: 24, fontWeight: '800' },
-  sub: { color: theme.textDim, fontSize: 13, marginTop: 6, marginBottom: 18, lineHeight: 19 },
-  section: { color: theme.textDim, marginTop: 18, marginBottom: 10, fontSize: 13 },
-  card: {
-    backgroundColor: theme.card,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 6,
-    elevation: 1,
-  },
-  rowLabel: { color: theme.text, fontSize: 14, fontWeight: '700', marginBottom: 10 },
-  inputRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  rupee: { color: theme.accent, fontSize: 18, fontWeight: '800' },
-  input: { flex: 1, color: theme.text, fontSize: 17, fontWeight: '700', paddingVertical: 6 },
-  saveBtn: {
-    backgroundColor: theme.accent,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    shadowColor: theme.accent,
-    shadowOpacity: 0.35,
-    shadowRadius: 4,
-    elevation: 2,
-  },
-  topHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 10,
-  },
-  headerRefreshBtn: {
-    padding: 8,
-    backgroundColor: theme.cardAlt,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  headerRefreshText: {
-    fontSize: 16,
-  },
-  saveBtnDisabled: {
-    opacity: 0.6,
-  },
-  saveText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
-  hint: { color: theme.textDim, fontSize: 11, marginTop: 8 },
-});
+const useStyles = makeStyles((t: Theme) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bg },
+    content: { padding: 16, paddingTop: 52, paddingBottom: 40 },
+    topHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 16,
+    },
+    h1: { color: t.text, fontSize: 24, fontWeight: '800' },
+    sub: { color: t.textDim, fontSize: 13, marginTop: 4, lineHeight: 18 },
+    headerRefreshBtn: {
+      width: 38,
+      height: 38,
+      borderRadius: 19,
+      backgroundColor: t.cardAlt,
+      borderWidth: 1,
+      borderColor: t.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    ringCard: {
+      backgroundColor: t.card,
+      borderRadius: t.radius.xl,
+      padding: 20,
+      marginBottom: 16,
+      borderWidth: 1,
+      borderColor: t.border,
+      ...t.shadows.sm,
+      alignItems: 'center',
+    },
+    sectionTitle: {
+      color: t.textDim,
+      marginTop: 18,
+      marginBottom: 10,
+      fontSize: 13,
+      fontWeight: '700',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+    },
+    card: {
+      backgroundColor: t.card,
+      borderRadius: t.radius.md,
+      padding: 16,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: t.border,
+      ...t.shadows.sm,
+    },
+    rowLabel: { color: t.text, fontSize: 14, fontWeight: '700', marginBottom: 10 },
+    inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    rupee: { color: t.accent, fontSize: 20, fontWeight: '800' },
+    input: {
+      flex: 1,
+      color: t.text,
+      fontSize: 18,
+      fontWeight: '800',
+      paddingVertical: 8,
+      paddingHorizontal: 10,
+      backgroundColor: t.cardAlt,
+      borderRadius: t.radius.sm,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
+    saveBtn: {
+      backgroundColor: t.accent,
+      borderRadius: t.radius.sm,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      alignItems: 'center',
+      justifyContent: 'center',
+      ...t.shadows.sm,
+    },
+    saveBtnDisabled: {
+      opacity: 0.6,
+    },
+    saveText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+    hint: { color: t.textDim, fontSize: 11, marginTop: 8 },
+  })
+);

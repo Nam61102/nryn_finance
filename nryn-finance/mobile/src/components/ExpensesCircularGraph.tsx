@@ -1,7 +1,9 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, AccessibilityInfo, Platform } from 'react-native';
 import Svg, { Path, G } from 'react-native-svg';
-import { theme } from '../theme';
+import { PieChart } from 'lucide-react-native';
+import { useTheme, makeStyles, Theme } from '../theme';
+import { haptic } from '../utils/haptics';
 
 export type SortKey = 'amount_desc' | 'amount_asc' | 'date_desc' | 'date_asc';
 
@@ -15,14 +17,13 @@ export interface SortOption {
   endAngle: number;
 }
 
-// 4 Donut wedges matching the user's reference donut chart palette:
-// Red (Highest), Sky Blue (Newest), Emerald (Lowest), Slate Indigo (Oldest)
+// 4 Donut wedges: Red (Highest), Sky Blue (Newest), Emerald (Lowest), Slate Indigo (Oldest)
 export const SORT_OPTIONS: SortOption[] = [
   {
     key: 'amount_desc',
     label: 'Highest',
     icon: '💎',
-    color: '#FF4757', // Ruby / Crimson Red (like reference image)
+    color: '#FF4757',
     sublabel: 'Highest first',
     startAngle: 0,
     endAngle: 90,
@@ -31,7 +32,7 @@ export const SORT_OPTIONS: SortOption[] = [
     key: 'date_desc',
     label: 'Newest',
     icon: '⚡',
-    color: '#38BDF8', // Sky Blue (like reference image)
+    color: '#38BDF8',
     sublabel: 'Latest first',
     startAngle: 90,
     endAngle: 180,
@@ -40,7 +41,7 @@ export const SORT_OPTIONS: SortOption[] = [
     key: 'amount_asc',
     label: 'Lowest',
     icon: '🪙',
-    color: '#10B981', // Mint / Emerald Green (like reference image)
+    color: '#10B981',
     sublabel: 'Lowest first',
     startAngle: 180,
     endAngle: 270,
@@ -49,7 +50,7 @@ export const SORT_OPTIONS: SortOption[] = [
     key: 'date_asc',
     label: 'Oldest',
     icon: '⏳',
-    color: '#6366F1', // Slate Navy / Indigo (like reference image)
+    color: '#6366F1',
     sublabel: 'Earliest first',
     startAngle: 270,
     endAngle: 360,
@@ -63,9 +64,6 @@ interface Props {
   totalCount?: number;
 }
 
-/**
- * Calculates an SVG path for an annular donut slice
- */
 function describeDonutSlice(
   cx: number,
   cy: number,
@@ -75,7 +73,6 @@ function describeDonutSlice(
   endAngleDeg: number
 ): string {
   const rad = Math.PI / 180;
-  // Rotate so 0 deg starts at top (12 o'clock)
   const a1 = (startAngleDeg - 90) * rad;
   const a2 = (endAngleDeg - 90) * rad;
 
@@ -102,12 +99,34 @@ function describeDonutSlice(
   ].join(' ');
 }
 
-export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns }: Props) {
+export default function ExpensesCircularGraph({ currentSort, onSelectSort }: Props) {
+  const theme = useTheme();
+  const styles = useStyles();
+
   const size = 196;
   const cx = size / 2;
   const cy = size / 2;
   const defaultRInner = 48;
   const defaultROuter = 82;
+
+  const sweepAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
+      if (reduceMotion) {
+        sweepAnim.setValue(1);
+      } else {
+        Animated.timing(sweepAnim, {
+          toValue: 1,
+          duration: 750,
+          easing: Easing.out(Easing.cubic),
+          useNativeDriver: Platform.OS !== 'web',
+        }).start();
+      }
+    }).catch(() => {
+      sweepAnim.setValue(1);
+    });
+  }, [sweepAnim]);
 
   const activeOption = SORT_OPTIONS.find((s) => s.key === currentSort) || SORT_OPTIONS[0];
 
@@ -116,12 +135,22 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
     return opt?.sublabel ?? '';
   };
 
+  const handleSelect = (key: string) => {
+    haptic.light();
+    onSelectSort(key);
+  };
+
+  const rotateInterpolation = sweepAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ['-90deg', '0deg'],
+  });
+
   return (
     <View style={styles.container}>
       {/* Header Row */}
       <View style={styles.headerRow}>
         <View style={styles.headerTitleGroup}>
-          <Text style={styles.headerIcon}>🍩</Text>
+          <PieChart size={18} color={theme.accent} />
           <Text style={styles.headerTitle}>Expense Breakdown Graph</Text>
         </View>
         <View style={[styles.activeBadge, { borderColor: `${activeOption.color}45`, backgroundColor: `${activeOption.color}15` }]}>
@@ -135,39 +164,46 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
         Touch any slice on the donut graph to filter expenses:
       </Text>
 
-      {/* Solid Donut Chart Graphic */}
+      {/* Solid Donut Chart Graphic with Sweep-in */}
       <View style={styles.chartWrapper}>
         <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-          <Svg width={size} height={size}>
-            <G>
-              {SORT_OPTIONS.map((opt) => {
-                const isActive = opt.key === currentSort;
-                const midAngle = (opt.startAngle + opt.endAngle) / 2;
-                const rad = (midAngle - 90) * (Math.PI / 180);
+          <Animated.View
+            style={{
+              width: size,
+              height: size,
+              transform: [{ rotate: rotateInterpolation }, { scale: sweepAnim }],
+            }}
+          >
+            <Svg width={size} height={size}>
+              <G>
+                {SORT_OPTIONS.map((opt) => {
+                  const isActive = opt.key === currentSort;
+                  const midAngle = (opt.startAngle + opt.endAngle) / 2;
+                  const rad = (midAngle - 90) * (Math.PI / 180);
 
-                // If active, slice pops out by 5px and expands outer radius by 3px
-                const popDist = isActive ? 5 : 0;
-                const sliceCx = cx + popDist * Math.cos(rad);
-                const sliceCy = cy + popDist * Math.sin(rad);
-                const rOut = isActive ? defaultROuter + 3 : defaultROuter;
-                const rIn = defaultRInner;
+                  const popDist = isActive ? 5 : 0;
+                  const sliceCx = cx + popDist * Math.cos(rad);
+                  const sliceCy = cy + popDist * Math.sin(rad);
+                  const rOut = isActive ? defaultROuter + 3 : defaultROuter;
+                  const rIn = defaultRInner;
 
-                const pathData = describeDonutSlice(sliceCx, sliceCy, rIn, rOut, opt.startAngle, opt.endAngle);
+                  const pathData = describeDonutSlice(sliceCx, sliceCy, rIn, rOut, opt.startAngle, opt.endAngle);
 
-                return (
-                  <Path
-                    key={opt.key}
-                    d={pathData}
-                    fill={opt.color}
-                    opacity={isActive ? 1 : 0.65}
-                    stroke={theme.card}
-                    strokeWidth={2.5}
-                    onPress={() => onSelectSort(opt.key)}
-                  />
-                );
-              })}
-            </G>
-          </Svg>
+                  return (
+                    <Path
+                      key={opt.key}
+                      d={pathData}
+                      fill={opt.color}
+                      opacity={isActive ? 1 : 0.65}
+                      stroke={theme.card}
+                      strokeWidth={2.5}
+                      onPress={() => handleSelect(opt.key)}
+                    />
+                  );
+                })}
+              </G>
+            </Svg>
+          </Animated.View>
 
           {/* Donut Hole Center Content */}
           <View style={styles.donutHole} pointerEvents="none">
@@ -197,7 +233,7 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
                   elevation: 3,
                 },
               ]}
-              onPress={() => onSelectSort(opt.key)}
+              onPress={() => handleSelect(opt.key)}
               activeOpacity={0.7}
             >
               <View style={styles.cardTopRow}>
@@ -227,151 +263,141 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort, txns 
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    backgroundColor: theme.card,
-    marginHorizontal: 16,
-    marginTop: 18,
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: theme.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  headerTitleGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  headerIcon: {
-    fontSize: 18,
-  },
-  headerTitle: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  activeBadge: {
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 999,
-    borderWidth: 1,
-  },
-  activeBadgeText: {
-    fontSize: 12,
-    fontWeight: '700',
-  },
-  subHint: {
-    color: theme.textDim,
-    fontSize: 12,
-    marginBottom: 10,
-  },
-  chartWrapper: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginVertical: 4,
-  },
-  donutHole: {
-    ...StyleSheet.absoluteFillObject,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 8,
-  },
-  centerIcon: {
-    fontSize: 22,
-    marginBottom: 1,
-  },
-  centerTitle: {
-    fontSize: 14,
-    fontWeight: '800',
-    letterSpacing: -0.2,
-  },
-  centerStat: {
-    color: theme.text,
-    fontSize: 13,
-    fontWeight: '800',
-    marginTop: 2,
-  },
-  centerActionHint: {
-    color: theme.textDim,
-    fontSize: 9,
-    fontWeight: '600',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-    marginTop: 2,
-  },
-  grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-    marginTop: 14,
-  },
-  quadrantCard: {
-    width: '48%',
-    backgroundColor: theme.card,
-    borderRadius: 14,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: theme.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  cardTopRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  colorChip: {
-    width: 14,
-    height: 14,
-    borderRadius: 4,
-  },
-  cardIcon: {
-    fontSize: 16,
-  },
-  cardLabel: {
-    color: theme.text,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  cardSublabel: {
-    color: theme.textDim,
-    fontSize: 11,
-    fontWeight: '700',
-    marginTop: 4,
-  },
-  summaryBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginTop: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    borderRadius: 12,
-    borderWidth: 1,
-  },
-  summaryBullet: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-  },
-  summaryText: {
-    color: theme.textDim,
-    fontSize: 12,
-    flex: 1,
-  },
-});
+const useStyles = makeStyles((t: Theme) =>
+  StyleSheet.create({
+    container: {
+      backgroundColor: t.card,
+      marginHorizontal: 16,
+      marginTop: 18,
+      borderRadius: t.radius.xl,
+      padding: 18,
+      borderWidth: 1,
+      borderColor: t.border,
+      ...t.shadows.sm,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    headerTitleGroup: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+    },
+    headerTitle: {
+      color: t.text,
+      fontSize: 16,
+      fontWeight: '800',
+    },
+    activeBadge: {
+      paddingHorizontal: 10,
+      paddingVertical: 4,
+      borderRadius: 999,
+      borderWidth: 1,
+    },
+    activeBadgeText: {
+      fontSize: 12,
+      fontWeight: '700',
+    },
+    subHint: {
+      color: t.textDim,
+      fontSize: 12,
+      marginBottom: 10,
+    },
+    chartWrapper: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginVertical: 4,
+    },
+    donutHole: {
+      ...StyleSheet.absoluteFillObject,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 8,
+    },
+    centerIcon: {
+      fontSize: 22,
+      marginBottom: 1,
+    },
+    centerTitle: {
+      fontSize: 14,
+      fontWeight: '800',
+      letterSpacing: -0.2,
+    },
+    centerStat: {
+      color: t.text,
+      fontSize: 13,
+      fontWeight: '800',
+      marginTop: 2,
+    },
+    centerActionHint: {
+      color: t.textDim,
+      fontSize: 9,
+      fontWeight: '600',
+      textTransform: 'uppercase',
+      letterSpacing: 0.5,
+      marginTop: 2,
+    },
+    grid: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 10,
+      marginTop: 14,
+    },
+    quadrantCard: {
+      width: '48%',
+      backgroundColor: t.cardAlt,
+      borderRadius: t.radius.md,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
+    cardTopRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 6,
+    },
+    colorChip: {
+      width: 14,
+      height: 14,
+      borderRadius: 4,
+    },
+    cardIcon: {
+      fontSize: 16,
+    },
+    cardLabel: {
+      color: t.text,
+      fontSize: 13,
+      fontWeight: '700',
+    },
+    cardSublabel: {
+      color: t.textDim,
+      fontSize: 11,
+      fontWeight: '700',
+      marginTop: 4,
+    },
+    summaryBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      marginTop: 14,
+      paddingVertical: 10,
+      paddingHorizontal: 14,
+      borderRadius: 12,
+      borderWidth: 1,
+    },
+    summaryBullet: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+    },
+    summaryText: {
+      color: t.textDim,
+      fontSize: 12,
+      flex: 1,
+    },
+  })
+);

@@ -1,3 +1,4 @@
+import { Platform } from 'react-native';
 import { getItem, setItem, deleteItem } from './storage';
 
 const RAW_BASE = process.env.EXPO_PUBLIC_API_URL || 'https://nryn-finance-wqtv.onrender.com';
@@ -90,10 +91,85 @@ export const api = {
 
   // ── AI Financial Copilot Endpoints ──
   copilotChat: (message: string, history: any[] = []) =>
-    request<{ ok: boolean; reply: string; insights?: any; suggestedFollowUps?: string[] }>('/copilot/chat', {
+    request<{ ok: boolean; reply: string; blocks?: any[]; insights?: any; suggestedFollowUps?: string[] }>('/copilot/chat', {
       method: 'POST',
       body: JSON.stringify({ message, history }),
     }),
+  copilotChatStream: async (
+    message: string,
+    history: any[] = [],
+    callbacks: {
+      onDelta?: (text: string) => void;
+      onBlocks?: (blocks: any[]) => void;
+      onDone?: (data: { suggestedFollowUps?: string[]; source?: string }) => void;
+      onError?: (err: Error) => void;
+    },
+    signal?: AbortSignal
+  ) => {
+    const token = await getToken();
+    try {
+      const res = await fetch(`${API_BASE}/api/copilot/chat/stream`, {
+        method: 'POST',
+        signal,
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({ message, history }),
+      });
+
+      if (!res.ok) {
+        const errText = await res.text().catch(() => '');
+        throw new Error(`Stream request failed (${res.status}): ${errText}`);
+      }
+
+      if (res.body && typeof (res.body as any).getReader === 'function') {
+        const reader = (res.body as any).getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '';
+        let currentEvent = 'message';
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith(':')) continue;
+            if (trimmed.startsWith('event: ')) {
+              currentEvent = trimmed.slice(7).trim();
+            } else if (trimmed.startsWith('data: ')) {
+              try {
+                const data = JSON.parse(trimmed.slice(6));
+                if (currentEvent === 'delta' && data.text) {
+                  callbacks.onDelta?.(data.text);
+                } else if (currentEvent === 'blocks' && data.blocks) {
+                  callbacks.onBlocks?.(data.blocks);
+                } else if (currentEvent === 'done') {
+                  callbacks.onDone?.(data);
+                } else if (currentEvent === 'error') {
+                  callbacks.onError?.(new Error(data.error || 'Server error'));
+                }
+              } catch (_) {}
+            }
+          }
+        }
+      } else {
+        const fallbackRes = await api.copilotChat(message, history);
+        if (fallbackRes.blocks) callbacks.onBlocks?.(fallbackRes.blocks);
+        if (fallbackRes.reply) callbacks.onDelta?.(fallbackRes.reply);
+        callbacks.onDone?.({ suggestedFollowUps: fallbackRes.suggestedFollowUps });
+      }
+    } catch (err: any) {
+      if (err.name !== 'AbortError') {
+        callbacks.onError?.(err);
+      }
+      throw err;
+    }
+  },
   getSafeSpend: (month?: string) =>
     request<{
       ok: boolean;
@@ -116,6 +192,7 @@ export const api = {
     request<{
       ok: boolean;
       count: number;
+      empty?: boolean;
       totalMonthlyRecurringINR: number;
       totalAnnualCostINR: number;
       potentialAnnualSavingsINR: number;
@@ -142,12 +219,23 @@ export const api = {
     request<{
       ok: boolean;
       financialYear: string;
+      financialYearLabel?: string;
+      regimeUnknown?: boolean;
+      taxRegime?: 'new' | 'old' | null;
+      notApplicable?: boolean;
+      empty?: boolean;
+      message?: string;
       section80C: any;
       section80D: any;
       totalDeductionClaimedINR: number;
-      potentialTaxSavingsINR: number;
+      potentialTaxSavingsINR: number | null;
       actionableTip: string;
     }>('/copilot/tax-radar'),
+  setTaxRegime: (taxRegime: 'new' | 'old' | null) =>
+    request<{ ok: boolean; user: any }>('/auth/tax-regime', {
+      method: 'PATCH',
+      body: JSON.stringify({ taxRegime }),
+    }),
   getRecommendations: (month?: string) =>
     request<{
       ok: boolean;
@@ -174,6 +262,46 @@ export const api = {
         actionTag: string;
       }[];
     }>(`/copilot/recommendations${month ? `?month=${month}` : ''}`),
+  transcribeVoice: async (
+    audioUri: string,
+    mimeType: string = 'audio/m4a',
+    filename: string = 'recording.m4a'
+  ): Promise<{
+    ok: boolean;
+    text: string;
+    language: 'mr' | 'hi' | 'en';
+    languageName: string;
+    provider?: string;
+  }> => {
+    const token = await getToken();
+    const formData = new FormData();
+
+    if (Platform.OS === 'web') {
+      const response = await fetch(audioUri);
+      const blob = await response.blob();
+      formData.append('audio', blob, filename);
+    } else {
+      formData.append('audio', {
+        uri: audioUri,
+        name: filename,
+        type: mimeType,
+      } as any);
+    }
+
+    const res = await fetch(`${API_BASE}/api/copilot/voice/transcribe`, {
+      method: 'POST',
+      headers: {
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: formData,
+    });
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new ApiError(res.status, data);
+    }
+    return data;
+  },
 };
 
 export const rupees = (paise: number) => (paise || 0) / 100;

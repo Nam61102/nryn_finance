@@ -4,18 +4,39 @@
  * Loan Prepayment & EMI Saver Simulator Engine
  */
 function calculateLoanPrepayment({
-  principalAmount = 3500000,
-  annualInterestRate = 8.5,
-  tenureMonths = 240,
+  principalAmount,
+  annualInterestRate,
+  tenureMonths,
   currentEmi = 0,
-  extraMonthlyPrepayment = 2000,
-  lumpSumPrepayment = 0
+  extraMonthlyPrepayment = 0,
+  lumpSumPrepayment = 0,
 }) {
-  const P = Number(principalAmount) || 3500000;
-  const r = (Number(annualInterestRate) || 8.5) / 12 / 100;
-  const n = Number(tenureMonths) || 240;
-  const extraMonthly = Number(extraMonthlyPrepayment) || 0;
-  const lumpSum = Number(lumpSumPrepayment) || 0;
+  const P = Number(principalAmount);
+  const annualRate = Number(annualInterestRate);
+  const n = Number(tenureMonths);
+
+  if (!P || P <= 0 || isNaN(P)) {
+    const err = new Error('Valid positive principalAmount is required');
+    err.status = 400;
+    err.code = 'INVALID_PRINCIPAL';
+    throw err;
+  }
+  if (!annualRate || annualRate <= 0 || isNaN(annualRate)) {
+    const err = new Error('Valid positive annualInterestRate is required');
+    err.status = 400;
+    err.code = 'INVALID_INTEREST_RATE';
+    throw err;
+  }
+  if (!n || n <= 0 || isNaN(n)) {
+    const err = new Error('Valid positive tenureMonths is required');
+    err.status = 400;
+    err.code = 'INVALID_TENURE';
+    throw err;
+  }
+
+  const r = annualRate / 12 / 100;
+  const extraMonthly = Math.max(0, Number(extraMonthlyPrepayment) || 0);
+  const lumpSum = Math.max(0, Number(lumpSumPrepayment) || 0);
 
   // Compute baseline EMI if not provided
   let baselineEmi = Number(currentEmi);
@@ -57,7 +78,7 @@ function calculateLoanPrepayment({
   return {
     ok: true,
     principalINR: P,
-    annualInterestRate,
+    annualInterestRate: annualRate,
     originalTenureMonths: n,
     baselineEmiINR: baselineEmi,
     extraMonthlyPrepaymentINR: extraMonthly,
@@ -72,7 +93,7 @@ function calculateLoanPrepayment({
     yearsSaved,
     recommendation: monthsSaved > 0
       ? `Paying just ₹${extraMonthly.toLocaleString('en-IN')} extra per month saves ₹${totalInterestSaved.toLocaleString('en-IN')} in interest and closes your loan ${yearsSaved} years (${monthsSaved} months) early!`
-      : 'Increase your monthly prepayment slightly to start shaving off years and interest.'
+      : 'Enter an extra monthly prepayment or lump sum to see interest and time savings.',
   };
 }
 

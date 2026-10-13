@@ -35,6 +35,7 @@ const env = {
 
   llm: {
     enabled: bool(process.env.LLM_FALLBACK_ENABLED, false),
+    copilotEnabled: bool(process.env.COPILOT_LLM_ENABLED, false),
     model: process.env.LLM_MODEL || 'openai/gpt-4o-mini',
     openrouterKey: process.env.OPENROUTER_API_KEY || '',
     groqKey: process.env.GROQ_API_KEY || '',
@@ -51,12 +52,17 @@ const env = {
 /** Warn-tier report, printed once at boot and exposed on /api/health. */
 env.capabilities = {
   llmFallback: env.llm.enabled && Boolean(env.llm.openrouterKey || env.llm.groqKey || env.llm.openaiKey),
+  copilotLlm: env.llm.copilotEnabled && Boolean(env.llm.openrouterKey || env.llm.groqKey || env.llm.openaiKey),
   gmail: Boolean(env.google.clientId && env.google.clientSecret),
 };
 
 env.missingFor = (capability) => {
   if (capability === 'llm') {
     if (!env.llm.enabled) return ['LLM_FALLBACK_ENABLED'];
+    return ['OPENROUTER_API_KEY', 'GROQ_API_KEY', 'OPENAI_API_KEY'].filter((k) => !process.env[k]);
+  }
+  if (capability === 'copilotLlm') {
+    if (!env.llm.copilotEnabled) return ['COPILOT_LLM_ENABLED'];
     return ['OPENROUTER_API_KEY', 'GROQ_API_KEY', 'OPENAI_API_KEY'].filter((k) => !process.env[k]);
   }
   if (capability === 'gmail') {

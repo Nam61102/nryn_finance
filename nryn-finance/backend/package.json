@@ -11,10 +11,11 @@
     "db:seed": "node scripts/seed-merchants.js",
     "db:demo": "node scripts/seed-demo.js",
     "replay": "node scripts/replay.js",
-    "test": "node --test tests/parse.test.js tests/period.test.js"
+    "test": "node --test tests/parse.test.js tests/period.test.js tests/copilot.test.js tests/voice.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
@@ -24,6 +25,7 @@
     "luxon": "^3.5.0",
     "mongoose": "^8.6.0",
     "morgan": "^1.10.0",
+    "multer": "^2.4.0",
     "socket.io": "^4.7.5"
   },
   "devDependencies": {

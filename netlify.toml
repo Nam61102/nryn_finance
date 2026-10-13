@@ -1,0 +1,14 @@
+[build]
+  base = "nryn-finance/mobile"
+  command = "npx expo export -p web"
+  publish = "dist"
+
+[build.environment]
+  EXPO_PUBLIC_API_URL = "https://nryn-finance-wqtv.onrender.com"
+  EXPO_PUBLIC_BACKFILL_DAYS = "180"
+  EXPO_PUBLIC_BATCH_SIZE = "200"
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

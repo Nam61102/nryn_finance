@@ -1,73 +1,108 @@
-import { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { api, formatINR } from '../../services/api';
-import { theme } from '../../theme';
+import { api } from '../../services/api';
+import { useTheme, makeStyles, Theme } from '../../theme';
+import { formatINR } from '../../utils/format';
+import { PressableScale } from '../../components/ui';
+import { CategoriesSkeleton } from '../../components/skeletons';
 
 export default function Categories() {
+  const theme = useTheme();
+  const styles = useStyles();
   const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
-  useFocusEffect(useCallback(() => { api.get<any>('/analytics/by-category').then(setData); }, []));
+  useFocusEffect(
+    useCallback(() => {
+      api.get<any>('/analytics/by-category')
+        .then((res) => setData(res))
+        .catch(() => {})
+        .finally(() => setLoading(false));
+    }, [])
+  );
 
-  if (!data) return <View style={styles.center}><Text style={{ color: theme.textDim }}>Loading…</Text></View>;
+  if (loading && !data) return <CategoriesSkeleton />;
 
-  const total = data.categories.reduce((s: number, c: any) => s + c.spent, 0);
+  const total = data?.categories?.reduce((s: number, c: any) => s + (c.spent || 0), 0) || 0;
 
   return (
-    <ScrollView style={{ backgroundColor: theme.bg }} contentContainerStyle={{ padding: 16, paddingTop: 56, paddingBottom: 40 }}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.h1}>Categories</Text>
-      <Text style={styles.sub}>{data.period.label} · {formatINR(total)} spent</Text>
+      <Text style={styles.sub}>
+        {data?.period?.label || 'This month'} · {formatINR(total)} spent
+      </Text>
 
-      {data.categories.length === 0 && <Text style={styles.empty}>Nothing recorded this month yet.</Text>}
+      {(!data?.categories || data.categories.length === 0) && (
+        <Text style={styles.empty}>Nothing recorded this month yet.</Text>
+      )}
 
-      {data.categories.map((c: any) => (
-        <TouchableOpacity
+      {data?.categories?.map((c: any) => (
+        <PressableScale
           key={c.category}
           style={styles.row}
-          onPress={() => router.push(`/transactions?category=${c.category}&month=${data.period.month}`)}
+          onPress={() => router.push(`/transactions?category=${c.category}&month=${data?.period?.month}`)}
+          hapticType="light"
         >
-          <View style={[styles.icon, { backgroundColor: `${c.color}22` }]}><Text style={{ fontSize: 18 }}>{c.icon}</Text></View>
+          <View style={[styles.icon, { backgroundColor: `${c.color || theme.accent}22` }]}>
+            <Text style={{ fontSize: 20 }}>{c.icon || '📦'}</Text>
+          </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.name}>{c.label}</Text>
             <View style={styles.barTrack}>
-              <View style={[styles.barFill, { width: `${total ? (c.spent / total) * 100 : 0}%`, backgroundColor: c.color }]} />
+              <View
+                style={[
+                  styles.barFill,
+                  { width: `${total ? (c.spent / total) * 100 : 0}%`, backgroundColor: c.color || theme.accent },
+                ]}
+              />
             </View>
           </View>
           <View style={{ alignItems: 'flex-end' }}>
             <Text style={styles.amount}>{formatINR(c.spent)}</Text>
             <Text style={styles.count}>{c.count} txn</Text>
           </View>
-        </TouchableOpacity>
+        </PressableScale>
       ))}
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  center: { flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' },
-  h1: { color: theme.text, fontSize: 24, fontWeight: '800' },
-  sub: { color: theme.textDim, fontSize: 13, marginTop: 6, marginBottom: 18 },
-  empty: { color: theme.textDim, textAlign: 'center', marginTop: 40 },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: theme.card,
-    borderRadius: 16,
-    padding: 14,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: theme.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.03,
-    shadowRadius: 4,
-    elevation: 1,
-  },
-  icon: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  name: { color: theme.text, fontSize: 14, fontWeight: '700', marginBottom: 8 },
-  barTrack: { height: 6, backgroundColor: '#E2E8F0', borderRadius: 3, overflow: 'hidden' },
-  barFill: { height: 6, borderRadius: 3 },
-  amount: { color: theme.text, fontSize: 15, fontWeight: '800' },
-  count: { color: theme.textDim, fontSize: 11, marginTop: 3 },
-});
+const useStyles = makeStyles((t: Theme) =>
+  StyleSheet.create({
+    container: { flex: 1, backgroundColor: t.bg },
+    content: { padding: 16, paddingTop: 52, paddingBottom: 40 },
+    h1: { color: t.text, fontSize: 24, fontWeight: '800' },
+    sub: { color: t.textDim, fontSize: 13, marginTop: 4, marginBottom: 18 },
+    empty: { color: t.textDim, textAlign: 'center', marginTop: 40 },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: t.card,
+      borderRadius: t.radius.md,
+      padding: 14,
+      marginBottom: 10,
+      borderWidth: 1,
+      borderColor: t.border,
+      ...t.shadows.sm,
+    },
+    icon: {
+      width: 44,
+      height: 44,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    name: { color: t.text, fontSize: 14, fontWeight: '700', marginBottom: 6 },
+    barTrack: {
+      height: 5,
+      backgroundColor: t.cardAlt,
+      borderRadius: 3,
+      overflow: 'hidden',
+    },
+    barFill: { height: '100%', borderRadius: 3 },
+    amount: { color: t.text, fontSize: 15, fontWeight: '800' },
+    count: { color: t.textDim, fontSize: 11, marginTop: 2 },
+  })
+);

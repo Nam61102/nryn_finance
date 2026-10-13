@@ -1,6 +1,8 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { theme } from '../../theme';
+import { Sparkles, TrendingDown, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react-native';
+import { useTheme, makeStyles, Theme } from '../../theme';
+import { haptic } from '../../utils/haptics';
 
 export interface RecommendationItem {
   id: string;
@@ -29,12 +31,19 @@ interface AiRecommendationsCardProps {
     recommendations: RecommendationItem[];
   } | null;
   onAskCopilot?: (prompt: string) => void;
+  maxInitial?: number;
 }
 
-export default function AiRecommendationsCard({ data, onAskCopilot }: AiRecommendationsCardProps) {
-  if (!data) {
-    return null;
-  }
+export default function AiRecommendationsCard({
+  data,
+  onAskCopilot,
+  maxInitial = 2,
+}: AiRecommendationsCardProps) {
+  const theme = useTheme();
+  const styles = useStyles();
+  const [expanded, setExpanded] = useState(false);
+
+  if (!data) return null;
 
   const { totalPotentialSavingsINR, recommendations } = data;
 
@@ -43,25 +52,20 @@ export default function AiRecommendationsCard({ data, onAskCopilot }: AiRecommen
       <View style={styles.card}>
         <View style={styles.headerRow}>
           <View style={styles.titleGroup}>
-            <Text style={styles.icon}>✨</Text>
+            <Sparkles size={18} color={theme.accent} />
             <View>
               <Text style={styles.title}>AI Spending Recommendations</Text>
               <Text style={styles.subtitle}>Smart spend analysis & savings tips</Text>
             </View>
           </View>
-          <View style={styles.balancedBadge}>
-            <Text style={styles.balancedBadgeText}>BALANCED</Text>
-          </View>
         </View>
 
         <View style={styles.balancedCard}>
-          <Text style={styles.balancedIcon}>🌿</Text>
+          <Lightbulb size={20} color={theme.accent} />
           <View style={{ flex: 1 }}>
-            <Text style={styles.balancedTitle}>Spending is Balanced</Text>
+            <Text style={styles.balancedTitle}>Insights appear after a few days of spending</Text>
             <Text style={styles.balancedText}>
-              {data.totalSpentINR && data.totalSpentINR > 0
-                ? `Total spending is ₹${data.totalSpentINR.toLocaleString('en-IN')}. No high-frequency merchant leaks or unusual dining spikes detected this month.`
-                : 'No excessive merchant leaks or delivery spikes detected this month. Spends are within normal limits.'}
+              Keep tracking your expenses. AI will automatically identify merchant patterns, duplicate charges, and potential savings.
             </Text>
           </View>
         </View>
@@ -69,12 +73,19 @@ export default function AiRecommendationsCard({ data, onAskCopilot }: AiRecommen
     );
   }
 
+  const displayed = expanded ? recommendations : recommendations.slice(0, maxInitial);
+
+  const toggleExpand = () => {
+    haptic.light();
+    setExpanded(!expanded);
+  };
+
   return (
     <View style={styles.card}>
       {/* Header */}
       <View style={styles.headerRow}>
         <View style={styles.titleGroup}>
-          <Text style={styles.icon}>✨</Text>
+          <Sparkles size={18} color={theme.accent} />
           <View>
             <Text style={styles.title}>AI Spending Recommendations</Text>
             <Text style={styles.subtitle}>Smart spend analysis & savings tips</Text>
@@ -91,15 +102,11 @@ export default function AiRecommendationsCard({ data, onAskCopilot }: AiRecommen
 
       {/* Recommendations List */}
       <View style={styles.list}>
-        {recommendations.map((rec) => {
+        {displayed.map((rec) => {
           const isHigh = rec.severity === 'high';
-          const badgeBg = isHigh ? '#FEF2F2' : '#FFF7ED';
-          const badgeBorder = isHigh ? '#FECACA' : '#FFEDD5';
-          const badgeColor = isHigh ? '#EF4444' : '#F97316';
 
           return (
             <View key={rec.id} style={styles.itemCard}>
-              {/* Item Top Row */}
               <View style={styles.itemHeader}>
                 <View style={styles.merchantLeft}>
                   <View style={styles.iconBox}>
@@ -113,8 +120,21 @@ export default function AiRecommendationsCard({ data, onAskCopilot }: AiRecommen
                   </View>
                 </View>
 
-                <View style={[styles.severityBadge, { backgroundColor: badgeBg, borderColor: badgeBorder }]}>
-                  <Text style={[styles.severityText, { color: badgeColor }]}>
+                <View
+                  style={[
+                    styles.severityBadge,
+                    {
+                      backgroundColor: isHigh ? theme.dangerLight : theme.accentLight,
+                      borderColor: isHigh ? theme.dangerBorder : theme.accentBorder,
+                    },
+                  ]}
+                >
+                  <Text
+                    style={[
+                      styles.severityText,
+                      { color: isHigh ? theme.danger : theme.accent },
+                    ]}
+                  >
                     {isHigh ? 'High Spend' : 'Optimize'}
                   </Text>
                 </View>
@@ -128,7 +148,7 @@ export default function AiRecommendationsCard({ data, onAskCopilot }: AiRecommen
                 </View>
                 {rec.percentOfTotal !== undefined && rec.percentOfTotal > 0 && (
                   <View style={styles.statCol}>
-                    <Text style={styles.statLabel}>Share of Budget</Text>
+                    <Text style={styles.statLabel}>Share</Text>
                     <Text style={[styles.statValue, { color: theme.accent }]}>
                       {rec.percentOfTotal}%
                     </Text>
@@ -137,256 +157,138 @@ export default function AiRecommendationsCard({ data, onAskCopilot }: AiRecommen
                 {rec.potentialSavingsINR > 0 && (
                   <View style={styles.statCol}>
                     <Text style={styles.statLabel}>Target Savings</Text>
-                    <Text style={[styles.statValue, { color: '#10B981' }]}>
-                      +₹{rec.potentialSavingsINR.toLocaleString('en-IN')}
+                    <Text style={[styles.statValue, { color: theme.success }]}>
+                      ~₹{rec.potentialSavingsINR.toLocaleString('en-IN')}
                     </Text>
                   </View>
                 )}
               </View>
 
-              {/* AI Suggestion Box */}
-              <View style={styles.aiSuggestionBox}>
-                <View style={styles.aiLabelRow}>
-                  <Text style={styles.aiLabel}>💡 AI Smart Advice</Text>
-                </View>
-                <Text style={styles.aiText}>{rec.aiSuggestion}</Text>
+              {/* AI Insight Box */}
+              <View style={styles.aiBox}>
+                <Text style={styles.aiBoxText}>{rec.aiSuggestion}</Text>
               </View>
-
-              {/* Action Button */}
-              {onAskCopilot && rec.merchantName && (
-                <TouchableOpacity
-                  style={styles.actionBtn}
-                  onPress={() =>
-                    onAskCopilot(
-                      `How can I reduce my spending on ${rec.merchantName}? Give me a weekly meal/spending plan.`
-                    )
-                  }
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.actionBtnText}>
-                    Ask Copilot for Plan on {rec.merchantName} →
-                  </Text>
-                </TouchableOpacity>
-              )}
             </View>
           );
         })}
       </View>
+
+      {recommendations.length > maxInitial && (
+        <TouchableOpacity style={styles.expandBtn} onPress={toggleExpand} activeOpacity={0.7}>
+          <Text style={styles.expandBtnText}>
+            {expanded ? 'Show Less' : `See All (${recommendations.length})`}
+          </Text>
+          {expanded ? <ChevronUp size={14} color={theme.accent} /> : <ChevronDown size={14} color={theme.accent} />}
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  card: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 16,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 3,
-  },
-  headerRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 14,
-  },
-  titleGroup: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    flex: 1,
-  },
-  icon: {
-    fontSize: 22,
-  },
-  title: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: theme.text,
-  },
-  subtitle: {
-    fontSize: 11,
-    color: theme.textDim,
-    marginTop: 1,
-  },
-  savingsBadge: {
-    backgroundColor: '#ECFDF5',
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-  },
-  savingsBadgeText: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#059669',
-  },
-  list: {
-    gap: 12,
-  },
-  itemCard: {
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  itemHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  merchantLeft: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-    flex: 1,
-  },
-  iconBox: {
-    width: 38,
-    height: 38,
-    borderRadius: 10,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  itemIcon: {
-    fontSize: 20,
-  },
-  merchantDetails: {
-    flex: 1,
-  },
-  merchantName: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: theme.text,
-  },
-  comparisonText: {
-    fontSize: 11,
-    color: '#64748B',
-    marginTop: 2,
-  },
-  severityBadge: {
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
-  severityText: {
-    fontSize: 10,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  statRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    backgroundColor: '#FFFFFF',
-    padding: 10,
-    borderRadius: 10,
-    marginBottom: 10,
-    borderWidth: 1,
-    borderColor: '#F1F5F9',
-  },
-  statCol: {
-    alignItems: 'center',
-  },
-  statLabel: {
-    fontSize: 10,
-    color: '#94A3B8',
-    textTransform: 'uppercase',
-    fontWeight: '600',
-    marginBottom: 2,
-  },
-  statValue: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.text,
-  },
-  aiSuggestionBox: {
-    backgroundColor: '#FFF7ED',
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    borderRadius: 10,
-    padding: 10,
-  },
-  aiLabelRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 4,
-  },
-  aiLabel: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#EA580C',
-    textTransform: 'uppercase',
-    letterSpacing: 0.5,
-  },
-  aiText: {
-    fontSize: 12,
-    color: '#7C2D12',
-    lineHeight: 18,
-  },
-  actionBtn: {
-    marginTop: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#FDBA74',
-    alignItems: 'center',
-  },
-  actionBtnText: {
-    fontSize: 11,
-    fontWeight: '600',
-    color: theme.accent,
-  },
-  balancedBadge: {
-    backgroundColor: '#ECFDF5',
-    borderWidth: 1,
-    borderColor: '#A7F3D0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-  },
-  balancedBadgeText: {
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#059669',
-    textTransform: 'uppercase',
-  },
-  balancedCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-    backgroundColor: '#F8FAFC',
-    borderRadius: 14,
-    padding: 14,
-    borderWidth: 1,
-    borderColor: '#E2E8F0',
-  },
-  balancedIcon: {
-    fontSize: 24,
-  },
-  balancedTitle: {
-    fontSize: 13,
-    fontWeight: '700',
-    color: theme.text,
-    marginBottom: 2,
-  },
-  balancedText: {
-    fontSize: 12,
-    color: '#64748B',
-    lineHeight: 17,
-  },
-});
+const useStyles = makeStyles((t: Theme) =>
+  StyleSheet.create({
+    card: {
+      backgroundColor: t.card,
+      borderRadius: t.radius.lg,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: t.border,
+      ...t.shadows.sm,
+    },
+    headerRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 12,
+    },
+    titleGroup: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+    title: { color: t.text, fontSize: 15, fontWeight: '800' },
+    subtitle: { color: t.textDim, fontSize: 11, marginTop: 1 },
+    savingsBadge: {
+      backgroundColor: t.successLight,
+      borderWidth: 1,
+      borderColor: t.successBorder,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 8,
+    },
+    savingsBadgeText: { color: t.success, fontSize: 11, fontWeight: '800' },
+    balancedCard: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      backgroundColor: t.cardAlt,
+      borderRadius: t.radius.sm,
+      padding: 14,
+      marginTop: 4,
+    },
+    balancedTitle: { color: t.text, fontSize: 13, fontWeight: '700' },
+    balancedText: { color: t.textDim, fontSize: 12, marginTop: 2, lineHeight: 17 },
+    list: { gap: 10 },
+    itemCard: {
+      backgroundColor: t.cardAlt,
+      borderRadius: t.radius.sm,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
+    itemHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginBottom: 8,
+    },
+    merchantLeft: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
+    iconBox: {
+      width: 34,
+      height: 34,
+      borderRadius: 10,
+      backgroundColor: t.card,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderWidth: 1,
+      borderColor: t.border,
+    },
+    itemIcon: { fontSize: 16 },
+    merchantDetails: { flex: 1 },
+    merchantName: { color: t.text, fontSize: 13, fontWeight: '800' },
+    comparisonText: { color: t.textDim, fontSize: 11, marginTop: 1 },
+    severityBadge: {
+      paddingHorizontal: 7,
+      paddingVertical: 2,
+      borderRadius: 6,
+      borderWidth: 1,
+    },
+    severityText: { fontSize: 10, fontWeight: '800' },
+    statRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      backgroundColor: t.card,
+      borderRadius: 8,
+      padding: 8,
+      marginBottom: 8,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
+    statCol: { alignItems: 'center', flex: 1 },
+    statLabel: { color: t.textDim, fontSize: 10, fontWeight: '600' },
+    statValue: { color: t.text, fontSize: 13, fontWeight: '800', marginTop: 1 },
+    aiBox: {
+      backgroundColor: t.card,
+      borderRadius: 8,
+      padding: 8,
+      borderLeftWidth: 3,
+      borderLeftColor: t.accent,
+    },
+    aiBoxText: { color: t.text, fontSize: 11, lineHeight: 16 },
+    expandBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 4,
+      marginTop: 12,
+      paddingVertical: 6,
+    },
+    expandBtnText: { color: t.accent, fontSize: 12, fontWeight: '700' },
+  })
+);

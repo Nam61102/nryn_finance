@@ -1,17 +1,13 @@
+import { lightColors } from './tokens';
+
+export * from './tokens';
+export * from './ThemeContext';
+
+/**
+ * Backwards compatibility theme object
+ */
 export const theme = {
-  bg: '#F8FAFC',          // Clean, crisp, high-end off-white background
-  card: '#FFFFFF',        // Pure white card surfaces
-  cardAlt: '#F1F5F9',     // Subtle light slate for chips, tags, and secondary containers
-  accent: '#FF6D00',      // Vibrant, high-end professional fintech orange
-  accentDark: '#E65100',  // Deep warm orange for active/hover states
-  accentLight: '#FFF7ED', // Soft warm orange wash for icon & badge backgrounds
-  accentBorder: '#FED7AA',// Soft warm orange border
-  text: '#0F172A',        // Deep rich slate-black for maximum contrast & crisp readability
-  textDim: '#64748B',     // Balanced slate gray for sublabels & metadata
-  border: '#E2E8F0',      // Crisp, subtle modern light border
-  danger: '#EF4444',      // Modern clean red
-  warn: '#F59E0B',        // Warm amber
-  success: '#10B981',     // Fresh emerald green
+  ...lightColors,
   radius: 20,
 };
 

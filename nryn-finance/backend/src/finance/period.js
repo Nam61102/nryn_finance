@@ -51,4 +51,44 @@ function resolveRange(range = '30d') {
 
 const startOfToday = () => DateTime.now().setZone(ZONE).startOf('day').toJSDate();
 
-module.exports = { ZONE, resolveMonth, resolveRange, startOfToday };
+function startOfDay(dtOrDate) {
+  const dt = dtOrDate
+    ? (dtOrDate instanceof DateTime ? dtOrDate.setZone(ZONE) : DateTime.fromJSDate(new Date(dtOrDate), { zone: ZONE }))
+    : DateTime.now().setZone(ZONE);
+  return dt.startOf('day').toJSDate();
+}
+
+function endOfDay(dtOrDate) {
+  const dt = dtOrDate
+    ? (dtOrDate instanceof DateTime ? dtOrDate.setZone(ZONE) : DateTime.fromJSDate(new Date(dtOrDate), { zone: ZONE }))
+    : DateTime.now().setZone(ZONE);
+  return dt.endOf('day').toJSDate();
+}
+
+/**
+ * Indian Financial Year runs 1 April → 31 March (§11.1).
+ * If month is Jan-Mar (1..3), FY started 1 April of previous year.
+ * If month is Apr-Dec (4..12), FY started 1 April of current year.
+ */
+function resolveFinancialYear(dtOrDate) {
+  const now = dtOrDate
+    ? (dtOrDate instanceof DateTime ? dtOrDate.setZone(ZONE) : DateTime.fromJSDate(new Date(dtOrDate), { zone: ZONE }))
+    : DateTime.now().setZone(ZONE);
+
+  const startYear = now.month >= 4 ? now.year : now.year - 1;
+  const start = DateTime.fromObject({ year: startYear, month: 4, day: 1, hour: 0, minute: 0, second: 0, millisecond: 0 }, { zone: ZONE });
+  const end = DateTime.fromObject({ year: startYear + 1, month: 3, day: 31, hour: 23, minute: 59, second: 59, millisecond: 999 }, { zone: ZONE });
+  const label = `FY ${startYear}-${String(startYear + 1).slice(-2)}`;
+  const financialYear = `${startYear}-${String(startYear + 1).slice(-2)}`;
+
+  return {
+    startYear,
+    endYear: startYear + 1,
+    start: start.toJSDate(),
+    end: end.toJSDate(),
+    label,
+    financialYear,
+  };
+}
+
+module.exports = { ZONE, resolveMonth, resolveRange, startOfToday, startOfDay, endOfDay, resolveFinancialYear };

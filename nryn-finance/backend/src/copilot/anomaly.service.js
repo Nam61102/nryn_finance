@@ -1,17 +1,20 @@
 'use strict';
+const { DateTime } = require('luxon');
 const Transaction = require('../db/models/Transaction');
+const { ZONE } = require('../finance/period');
 
 /**
  * Anomaly & Fraud Watchdog Service
  */
 async function detectAnomalies(userId) {
   const anomalies = [];
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 86400000);
+  const thirtyDaysAgo = DateTime.now().setZone(ZONE).minus({ days: 30 }).startOf('day').toJSDate();
 
-  // Fetch recent debit transactions
+  // Fetch recent debit transactions (soft deletes excluded)
   const txns = await Transaction.find({
     userId,
     direction: 'debit',
+    deletedAt: null,
     occurredAt: { $gte: thirtyDaysAgo }
   }).sort({ occurredAt: -1 }).limit(100).lean();
 

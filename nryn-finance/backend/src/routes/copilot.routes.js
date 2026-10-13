@@ -1,13 +1,26 @@
 'use strict';
 const router = require('express').Router();
+const rateLimit = require('express-rate-limit');
 const { requireAuth } = require('../auth/session.middleware');
 const copilot = require('../copilot/copilot.controller');
+const voice = require('../copilot/voice.controller');
 
 // All Copilot routes require authentication
 router.use(requireAuth);
 
+const chatLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => (req.userId ? String(req.userId) : req.ip),
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: 'rate_limit_exceeded', message: 'Chat rate limit reached. Please wait a minute.' },
+});
+
 // 1. Natural Language Conversational Copilot
-router.post('/chat', copilot.chat);
+router.post('/chat', chatLimiter, copilot.chat);
+router.post('/chat/stream', chatLimiter, copilot.chatStream);
+router.post('/voice/transcribe', voice.uploadMiddleware, voice.transcribe);
 
 // 2. Safe-to-Spend Daily Allowance & Burn Rate
 router.get('/safe-to-spend', copilot.getSafeSpend);

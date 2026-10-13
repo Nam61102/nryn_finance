@@ -12,10 +12,16 @@ const { startParseJob } = require('./src/jobs/parse.job');
 const { startDigestJob } = require('./src/jobs/digest.job');
 const RawMessage = require('./src/db/models/RawMessage');
 
+const cookieParser = require('cookie-parser');
+
 const app = express();
 app.use(helmet());
 app.use(cors({ origin: env.corsOrigins.length ? env.corsOrigins : true, credentials: true }));
-app.use(express.json({ limit: '10mb' }));
+app.use(cookieParser());
+
+// Allow 10mb only for document analysis and bank statement imports; 1mb globally everywhere else
+app.use(['/api/ai/analyze-document', '/api/ai/statement-import'], express.json({ limit: '10mb' }));
+app.use(express.json({ limit: '1mb' }));
 app.use(morgan(env.logLevel));
 
 /**

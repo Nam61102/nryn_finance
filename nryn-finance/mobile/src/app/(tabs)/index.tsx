@@ -1,23 +1,29 @@
-import { useCallback, useEffect, useState } from 'react';
-import { View, Text, ScrollView, RefreshControl, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import React, { useCallback, useEffect, useState } from 'react';
+import { View, ScrollView, RefreshControl, StyleSheet, Alert } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
+import { Inbox } from 'lucide-react-native';
 import { api } from '../../services/api';
 import { syncSms } from '../../sync/sms.sync';
-import { theme } from '../../theme';
-import MonthSwitcher from '../../components/MonthSwitcher';
+import { useTheme, makeStyles, Theme } from '../../theme';
 import CategoryChip from '../../components/CategoryChip';
 import ExpenseRow from '../../components/ExpenseRow';
 import PaceBanner from '../../components/PaceBanner';
 import ExpensesCircularGraph from '../../components/ExpensesCircularGraph';
-import SafeSpendGauge from '../../components/copilot/SafeSpendGauge';
 import AnomalyAlertBanner from '../../components/copilot/AnomalyAlertBanner';
 import SubscriptionCard from '../../components/copilot/SubscriptionCard';
 import CopilotDrawer from '../../components/copilot/CopilotDrawer';
 import AiRecommendationsCard from '../../components/copilot/AiRecommendationsCard';
-
-
+import HomeHeader from '../../components/home/HomeHeader';
+import HomeHeroCard from '../../components/home/HomeHeroCard';
+import MonthComparisonRow from '../../components/home/MonthComparisonRow';
+import { SectionHeader, EmptyState } from '../../components/ui';
+import { HomeSkeleton } from '../../components/skeletons';
+import { haptic } from '../../utils/haptics';
 
 export default function Home() {
+  const theme = useTheme();
+  const styles = useStyles();
+
   const [months, setMonths] = useState<any[]>([]);
   const [month, setMonth] = useState<string>('');
   const [status, setStatus] = useState<any>(null);
@@ -32,29 +38,34 @@ export default function Home() {
   const [subs, setSubs] = useState<any>(null);
   const [recommendations, setRecommendations] = useState<any>(null);
 
-  const load = useCallback(async (m?: string) => {
-    try {
-      const [mo, st, tx, ss, an, sb, rec] = await Promise.all([
-        api.months(),
-        api.budgetStatus(m),
-        api.transactions({ month: m, sort, limit: '30' }),
-        api.getSafeSpend(m).catch(() => null),
-        api.getAnomalies().catch(() => ({ anomalies: [] })),
-        api.getSubscriptions().catch(() => null),
-        api.getRecommendations(m).catch(() => null),
-      ]);
-      setMonths(mo.months);
-      setStatus(st);
-      setMonth(st.period.month);
-      setTxns(tx.transactions);
-      if (ss?.ok) setSafeSpend(ss);
-      if (an?.anomalies) setAnomalies(an.anomalies);
-      if (sb?.ok) setSubs(sb);
-      if (rec?.ok) setRecommendations(rec);
-    } finally {
-      setLoading(false);
-    }
-  }, [sort]);
+  const load = useCallback(
+    async (m?: string) => {
+      try {
+        const [mo, st, tx, ss, an, sb, rec] = await Promise.all([
+          api.months().catch(() => ({ months: [] })),
+          api.budgetStatus(m).catch(() => null),
+          api.transactions({ month: m, sort, limit: '30' }).catch(() => ({ transactions: [] })),
+          api.getSafeSpend(m).catch(() => null),
+          api.getAnomalies().catch(() => ({ anomalies: [] })),
+          api.getSubscriptions().catch(() => null),
+          api.getRecommendations(m).catch(() => null),
+        ]);
+        if (mo?.months) setMonths(mo.months);
+        if (st) {
+          setStatus(st);
+          if (st.period?.month) setMonth(st.period.month);
+        }
+        if (tx?.transactions) setTxns(tx.transactions);
+        if (ss?.ok) setSafeSpend(ss);
+        if (an?.anomalies) setAnomalies(an.anomalies);
+        if (sb?.ok) setSubs(sb);
+        if (rec?.ok) setRecommendations(rec);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [sort]
+  );
 
   const handleSelectSort = (newSort: string) => {
     setSort(newSort);
@@ -63,16 +74,22 @@ export default function Home() {
       const copy = [...prev];
       if (newSort === 'amount_desc') return copy.sort((a, b) => b.amount - a.amount);
       if (newSort === 'amount_asc') return copy.sort((a, b) => a.amount - b.amount);
-      if (newSort === 'date_desc') return copy.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime());
-      if (newSort === 'date_asc') return copy.sort((a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime());
+      if (newSort === 'date_desc')
+        return copy.sort(
+          (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+        );
+      if (newSort === 'date_asc')
+        return copy.sort(
+          (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
+        );
       return copy;
     });
   };
 
-  useEffect(() => { load(month || undefined); }, [sort]);
+  useEffect(() => {
+    load(month || undefined);
+  }, [sort]);
 
-  // Immediate load on open so newly added expenses/budgets show instantly.
-  // SMS sync runs in background.
   useFocusEffect(
     useCallback(() => {
       load(month || undefined);
@@ -88,10 +105,12 @@ export default function Home() {
 
   const onRefresh = async () => {
     setRefreshing(true);
+    haptic.light();
     try {
       await load(month || undefined);
       const p = await syncSms().catch(() => null);
       if (p && p.uploaded > 0) {
+        haptic.success();
         Alert.alert('Sync Complete', `Synced ${p.uploaded} new transaction(s)!`);
         await load(month || undefined);
       }
@@ -103,395 +122,152 @@ export default function Home() {
   };
 
   if (loading) {
-    return <View style={styles.center}><ActivityIndicator color={theme.accent} /></View>;
+    return <HomeSkeleton />;
   }
 
   const ring = status?.ring;
   const noBudget = !ring?.total;
-  const comparison = status?.comparison;
-  const currentSpentRupees = ((status?.ring?.spent || 0) / 100).toLocaleString('en-IN');
-  const lastMonthSpentRupees = ((comparison?.lastMonthSpent || 0) / 100).toLocaleString('en-IN');
+  const recentTxns = txns.slice(0, 5);
 
   return (
-    <View style={{ flex: 1, backgroundColor: theme.bg }}>
+    <View style={styles.container}>
       <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ paddingBottom: 80 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={theme.accent} />}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor={theme.accent}
+            colors={[theme.accent]}
+          />
+        }
       >
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <Text style={styles.hello}>NRYN Finance</Text>
-            {refreshing && (
-              <View style={styles.refreshPill}>
-                <ActivityIndicator size="small" color={theme.accent} />
-                <Text style={styles.refreshPillText}>Updating...</Text>
-              </View>
-            )}
-          </View>
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              style={styles.refreshBtn}
-              onPress={onRefresh}
-              disabled={refreshing}
-              activeOpacity={0.7}
-              accessibilityLabel="Refresh dashboard"
-            >
-              {refreshing ? (
-                <ActivityIndicator size="small" color={theme.accent} />
-              ) : (
-                <Text style={styles.refreshBtnIcon}>🔄</Text>
-              )}
-            </TouchableOpacity>
-            {status?.needsReview > 0 && (
-              <TouchableOpacity onPress={() => router.push('/transactions?needsReview=true')} style={styles.reviewPill}>
-                <Text style={styles.reviewText}>{status.needsReview} to review</Text>
-              </TouchableOpacity>
-            )}
-          </View>
-        </View>
+        {/* 1. Header (Greeting, Avatar, Review Count) */}
+        <HomeHeader
+          userName="there"
+          needsReviewCount={status?.needsReview || 0}
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+        />
 
+        {/* 2. HERO CARD (Focal visual anchor) */}
+        <HomeHeroCard safeSpend={safeSpend} />
+
+        {/* 3. Anomaly Alert Banner (Dismissible, only if anomalies exist) */}
         <AnomalyAlertBanner anomalies={anomalies} />
 
-        <MonthSwitcher months={months} value={month} onChange={(m) => { setMonth(m); load(m); }} />
+        {/* 4. Month Switcher + This vs Last Month Stats */}
+        <MonthComparisonRow
+          months={months}
+          month={month}
+          onSelectMonth={(m) => {
+            setMonth(m);
+            load(m);
+          }}
+          status={status}
+        />
 
-        <SafeSpendGauge data={safeSpend} />
+        {/* 5. Pace Banner (if budget exists) */}
+        {status?.pace && !noBudget && <PaceBanner pace={status.pace} />}
 
-        <View style={styles.spendCard}>
-        <View style={styles.cardHeaderRow}>
-          <Text style={styles.cardHeaderTitle}>Monthly Spending Overview</Text>
-          <Text style={styles.cardHeaderBadge}>{status?.period?.shortLabel || 'Current'}</Text>
-        </View>
-
-        <View style={styles.statsRow}>
-          <View style={styles.statCol}>
-            <Text style={styles.statLabel}>This Month ({status?.period?.shortLabel || 'Current'})</Text>
-            <Text style={styles.statValueThis}>₹{currentSpentRupees}</Text>
-          </View>
-
-          <View style={styles.statDivider} />
-
-          <View style={styles.statCol}>
-            <Text style={styles.statLabel}>Last Month ({comparison?.prevLabel || 'Previous'})</Text>
-            <Text style={styles.statValuePrev}>₹{lastMonthSpentRupees}</Text>
-          </View>
-        </View>
-
-        {comparison && (
-          <View
-            style={[
-              styles.insightBadge,
-              comparison.isSaved && styles.insightSaved,
-              comparison.isMore && styles.insightMore,
-            ]}
-          >
-            <Text style={styles.insightIcon}>
-              {comparison.isSaved ? '📉' : comparison.isMore ? '📈' : '📊'}
-            </Text>
-            <Text
-              style={[
-                styles.insightText,
-                comparison.isSaved && styles.textSaved,
-                comparison.isMore && styles.textMore,
-              ]}
+        {/* 6. Category Chips (Horizontal Scroll) */}
+        {status?.chips?.length > 0 && (
+          <View style={styles.chipsSection}>
+            <SectionHeader title="Category Budgets" />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.chipsScroll}
             >
-              {comparison.comparisonText}
-            </Text>
+              {status.chips.map((c: any) => (
+                <CategoryChip
+                  key={c.category}
+                  chip={c}
+                  onPress={() => router.push(`/transactions?category=${c.category}&month=${month}`)}
+                />
+              ))}
+            </ScrollView>
           </View>
         )}
 
-        {noBudget ? (
-          <TouchableOpacity style={styles.budgetRow} onPress={() => router.push('/(tabs)/budgets')}>
-            <Text style={styles.budgetPromptText}>🎯 Set monthly budget to track pace →</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={styles.budgetProgressWrap} onPress={() => router.push('/(tabs)/budgets')}>
-            <View style={styles.budgetProgressHeader}>
-              <Text style={styles.budgetProgressLabel}>
-                Monthly Budget: ₹{((ring.total || 0) / 100).toLocaleString('en-IN')}
-              </Text>
-              <Text style={[styles.budgetProgressStatus, ring.over && { color: theme.danger }]}>
-                {ring.over
-                  ? `Over by ₹${(((ring.spent || 0) - (ring.total || 0)) / 100).toLocaleString('en-IN')}`
-                  : `₹${(((ring.remaining || 0)) / 100).toLocaleString('en-IN')} left`}
-              </Text>
-            </View>
-            <View style={styles.progressBarTrack}>
-              <View
-                style={[
-                  styles.progressBarFill,
-                  { width: `${Math.min((ring.ratio || 0) * 100, 100)}%` },
-                  ring.over && { backgroundColor: theme.danger },
-                ]}
+        {/* 7. AI Insights Card (Recommendations: Top 1-2 items) */}
+        <View style={styles.sectionWrap}>
+          <AiRecommendationsCard data={recommendations} maxInitial={2} />
+        </View>
+
+        {/* 8. Expenses Circular Donut Graph (4 sort slices with sweep-in) */}
+        <ExpensesCircularGraph
+          currentSort={sort}
+          onSelectSort={handleSelectSort}
+          txns={txns}
+          totalCount={txns.length}
+        />
+
+        {/* 9. Subscriptions Card */}
+        <SubscriptionCard data={subs} />
+
+        {/* 10. Recent Transactions */}
+        <View style={styles.txnsSection}>
+          <SectionHeader
+            title="Recent Expenses"
+            badge={txns.length > 0 ? `${txns.length} total` : undefined}
+            actionLabel={txns.length > 5 ? 'See all' : undefined}
+            onAction={() => router.push(`/transactions?month=${month}`)}
+          />
+
+          {recentTxns.length === 0 ? (
+            <EmptyState
+              icon={<Inbox size={28} color={theme.accent} />}
+              title="No expenses recorded yet"
+              subtitle={`No transactions found in ${status?.period?.label || 'this period'}. Pull down to sync SMS, or add manually.`}
+              actionTitle="Add Expense"
+              onAction={() => router.push('/add')}
+            />
+          ) : (
+            recentTxns.map((t) => (
+              <ExpenseRow
+                key={t._id}
+                txn={t}
+                onPress={() => router.push(`/transaction/${t._id}`)}
               />
-            </View>
-          </TouchableOpacity>
-        )}
-      </View>
-
-      {status?.pace && !noBudget && <PaceBanner pace={status.pace} />}
-
-      {status?.chips?.length > 0 && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginTop: 18 }} contentContainerStyle={{ paddingHorizontal: 16 }}>
-          {status.chips.map((c: any) => (
-            <CategoryChip key={c.category} chip={c} onPress={() => router.push(`/transactions?category=${c.category}&month=${month}`)} />
-          ))}
-        </ScrollView>
-      )}
-
-      <View style={{ marginHorizontal: 16, marginTop: 16 }}>
-        <AiRecommendationsCard data={recommendations} />
-      </View>
-
-      <ExpensesCircularGraph
-        currentSort={sort}
-        onSelectSort={handleSelectSort}
-        txns={txns}
-        totalCount={txns.length}
-      />
-
-      <SubscriptionCard data={subs} />
-
-      <View style={styles.listHeader}>
-        <Text style={styles.listTitle}>Expense Transactions</Text>
-        <View style={styles.countBadge}>
-          <Text style={styles.countBadgeText}>{txns.length} items</Text>
+            ))
+          )}
         </View>
-      </View>
+      </ScrollView>
 
-      {txns.length === 0 ? (
-        <View style={styles.emptyList}>
-          <Text style={styles.emptyListText}>No expenses in {status?.period?.label}.</Text>
-          <Text style={styles.emptyListSub}>Pull down to sync your SMS inbox, or tap + to add one.</Text>
-        </View>
-      ) : (
-        txns.map((t) => <ExpenseRow key={t._id} txn={t} onPress={() => router.push(`/transaction/${t._id}`)} />)
-      )}
-
-      {txns.length >= 30 && (
-        <TouchableOpacity onPress={() => router.push(`/transactions?month=${month}`)}>
-          <Text style={styles.seeAll}>See all transactions →</Text>
-        </TouchableOpacity>
-      )}
-    </ScrollView>
-
-    {/* Floating Autonomous AI Copilot Drawer */}
-    <CopilotDrawer />
-  </View>
-);
+      {/* Floating Autonomous AI Copilot Drawer */}
+      <CopilotDrawer />
+    </View>
+  );
 }
 
-const styles = StyleSheet.create({
-  center: { flex: 1, backgroundColor: theme.bg, alignItems: 'center', justifyContent: 'center' },
-  header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 16, paddingTop: 56, paddingBottom: 8 },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  hello: { color: theme.text, fontSize: 20, fontWeight: '800' },
-  refreshBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: theme.cardAlt,
-    borderWidth: 1,
-    borderColor: theme.border,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  refreshBtnIcon: {
-    fontSize: 16,
-  },
-  refreshPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: '#FFF7ED',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-  },
-  refreshPillText: {
-    color: theme.accent,
-    fontSize: 11,
-    fontWeight: '700',
-  },
-  reviewPill: {
-    backgroundColor: '#FFF7ED',
-    borderRadius: 999,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-  },
-  reviewText: { color: theme.accent, fontSize: 12, fontWeight: '700' },
-  spendCard: {
-    backgroundColor: theme.card,
-    marginHorizontal: 16,
-    marginTop: 10,
-    borderRadius: 22,
-    padding: 18,
-    borderWidth: 1,
-    borderColor: theme.border,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
-    shadowRadius: 10,
-    elevation: 2,
-  },
-  cardHeaderRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: 14,
-  },
-  cardHeaderTitle: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '800',
-  },
-  cardHeaderBadge: {
-    color: theme.accent,
-    fontSize: 12,
-    fontWeight: '700',
-    backgroundColor: '#FFF7ED',
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 8,
-  },
-  statsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingBottom: 14,
-  },
-  statCol: {
-    flex: 1,
-  },
-  statDivider: {
-    width: 1,
-    height: 40,
-    backgroundColor: theme.border,
-    marginHorizontal: 12,
-  },
-  statLabel: {
-    color: theme.textDim,
-    fontSize: 12,
-    fontWeight: '600',
-    marginBottom: 6,
-  },
-  statValueThis: {
-    color: theme.text,
-    fontSize: 24,
-    fontWeight: '800',
-  },
-  statValuePrev: {
-    color: theme.textDim,
-    fontSize: 18,
-    fontWeight: '700',
-  },
-  insightBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: theme.cardAlt,
-    borderRadius: 14,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginTop: 2,
-    marginBottom: 10,
-    gap: 8,
-  },
-  insightSaved: {
-    backgroundColor: 'rgba(16, 185, 129, 0.08)',
-    borderWidth: 1,
-    borderColor: 'rgba(16, 185, 129, 0.25)',
-  },
-  insightMore: {
-    backgroundColor: '#FFF7ED',
-    borderWidth: 1,
-    borderColor: '#FED7AA',
-  },
-  insightIcon: {
-    fontSize: 16,
-  },
-  insightText: {
-    color: theme.text,
-    fontSize: 13,
-    fontWeight: '600',
-    flex: 1,
-  },
-  textSaved: {
-    color: '#059669',
-  },
-  textMore: {
-    color: theme.accent,
-  },
-  budgetRow: {
-    marginTop: 4,
-    paddingTop: 10,
-    alignItems: 'center',
-    borderTopWidth: 1,
-    borderTopColor: theme.border,
-  },
-  budgetPromptText: {
-    color: theme.accent,
-    fontSize: 13,
-    fontWeight: '700',
-  },
-  budgetProgressWrap: {
-    marginTop: 4,
-    paddingTop: 10,
-    borderTopWidth: 1,
-    borderTopColor: theme.border,
-  },
-  budgetProgressHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 6,
-  },
-  budgetProgressLabel: {
-    color: theme.textDim,
-    fontSize: 12,
-    fontWeight: '500',
-  },
-  budgetProgressStatus: {
-    color: theme.accent,
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  progressBarTrack: {
-    height: 6,
-    backgroundColor: theme.cardAlt,
-    borderRadius: 999,
-    overflow: 'hidden',
-  },
-  progressBarFill: {
-    height: '100%',
-    backgroundColor: theme.accent,
-    borderRadius: 999,
-  },
-  listHeader: {
-    paddingHorizontal: 16,
-    marginTop: 22,
-    marginBottom: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  listTitle: { color: theme.text, fontSize: 16, fontWeight: '700' },
-  countBadge: {
-    backgroundColor: theme.cardAlt,
-    borderRadius: 8,
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderWidth: 1,
-    borderColor: theme.border,
-  },
-  countBadgeText: { color: theme.textDim, fontSize: 12, fontWeight: '600' },
-  emptyList: { padding: 32, alignItems: 'center' },
-  emptyListText: { color: theme.text, fontSize: 14, fontWeight: '600' },
-  emptyListSub: { color: theme.textDim, fontSize: 12, marginTop: 6, textAlign: 'center' },
-  seeAll: { color: theme.accent, textAlign: 'center', padding: 18, fontWeight: '600' },
-});
+const useStyles = makeStyles((t: Theme) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: t.bg,
+    },
+    scrollView: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingBottom: 96,
+    },
+    chipsSection: {
+      marginTop: 8,
+      marginBottom: 12,
+    },
+    chipsScroll: {
+      paddingHorizontal: 16,
+    },
+    sectionWrap: {
+      marginHorizontal: 16,
+      marginTop: 10,
+    },
+    txnsSection: {
+      marginTop: 20,
+    },
+  })
+);

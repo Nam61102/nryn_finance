@@ -63,3 +63,34 @@ test('pace: no budget set does not divide by zero', () => {
   assert.strictEqual(r.state, 'no_budget');
   assert.strictEqual(r.pace, null);
 });
+
+/* ── Financial Year & IST Day Boundaries ──────────────────────────── */
+const { resolveFinancialYear, startOfDay, endOfDay } = require('../src/finance/period');
+
+test('FY boundaries in February (falls in previous calendar year start)', () => {
+  const febDate = new Date('2026-02-15T10:00:00.000Z');
+  const fy = resolveFinancialYear(febDate);
+  assert.strictEqual(fy.startYear, 2025);
+  assert.strictEqual(fy.endYear, 2026);
+  assert.strictEqual(fy.financialYear, '2025-26');
+  assert.strictEqual(fy.start.toISOString(), '2025-03-31T18:30:00.000Z'); // 1 Apr 2025 00:00 IST
+  assert.strictEqual(fy.end.toISOString(), '2026-03-31T18:29:59.999Z');   // 31 Mar 2026 23:59:59.999 IST
+});
+
+test('FY boundaries in May (falls in current calendar year start)', () => {
+  const mayDate = new Date('2026-05-10T10:00:00.000Z');
+  const fy = resolveFinancialYear(mayDate);
+  assert.strictEqual(fy.startYear, 2026);
+  assert.strictEqual(fy.endYear, 2027);
+  assert.strictEqual(fy.financialYear, '2026-27');
+  assert.strictEqual(fy.start.toISOString(), '2026-03-31T18:30:00.000Z'); // 1 Apr 2026 00:00 IST
+  assert.strictEqual(fy.end.toISOString(), '2027-03-31T18:29:59.999Z');   // 31 Mar 2027 23:59:59.999 IST
+});
+
+test('startOfDay and endOfDay in IST', () => {
+  const sample = new Date('2026-03-15T10:00:00.000Z'); // 15:30 IST
+  const sod = startOfDay(sample);
+  const eod = endOfDay(sample);
+  assert.strictEqual(sod.toISOString(), '2026-03-14T18:30:00.000Z'); // 00:00:00 IST
+  assert.strictEqual(eod.toISOString(), '2026-03-15T18:29:59.999Z'); // 23:59:59.999 IST
+});
