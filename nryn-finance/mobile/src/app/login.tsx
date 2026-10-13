@@ -23,12 +23,18 @@ import {
   KeyRound,
   X,
   Check,
+  Shield,
+  Database,
 } from 'lucide-react-native';
 import { api, setToken, API_BASE } from '../services/api';
 import { useTheme, makeStyles } from '../theme';
 import { triggerHaptic } from '../utils/haptics';
 import PressableScale from '../components/ui/PressableScale';
 import Button from '../components/ui/Button';
+import { setItem, deleteItem } from '../services/storage';
+import { requestPermission, isSupported } from '../native/sms.reader';
+import { syncSms, markBackfillDone, type SyncProgress } from '../sync/sms.sync';
+import { registerBackgroundSync } from '../sync/background.task';
 
 export default function Login() {
   const theme = useTheme();
@@ -36,6 +42,12 @@ export default function Login() {
 
   // Mode: Sign In or Create Account
   const [mode, setMode] = useState<'login' | 'register'>('login');
+
+  // Multi-step: 'auth' -> 'sms' (instant transition upon login)
+  const [step, setStep] = useState<'auth' | 'sms'>('auth');
+  const [progress, setProgress] = useState<SyncProgress | null>(null);
+  const [smsGranted, setSmsGranted] = useState(false);
+  const [loadingDemo, setLoadingDemo] = useState(false);
 
   // Input states
   const [name, setName] = useState('');
@@ -58,8 +70,88 @@ export default function Login() {
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
   const [forgotBusy, setForgotBusy] = useState(false);
 
-  const navigateToApp = () => {
-    router.replace('/onboarding' as any);
+  const finishAndGo = async () => {
+    await setItem('nryn_finance_onboarded', 'true');
+    router.replace('/(tabs)');
+  };
+
+  const loadSampleData = async () => {
+    triggerHaptic('medium');
+    setLoadingDemo(true);
+    try {
+      await api.seedDemo();
+      triggerHaptic('success');
+      Alert.alert(
+        'Sample Bank Data Loaded! 🎉',
+        'Realistic bank transaction messages (HDFC, SBI, ICICI, Swiggy, Blinkit, Salary) and budgets have been generated for your account.',
+        [{ text: 'View Dashboard', onPress: finishAndGo }]
+      );
+    } catch (err: any) {
+      triggerHaptic('error');
+      const msg = err.body?.message || err.message || 'Could not load sample data.';
+      Alert.alert('Notice', `${msg}\nTaking you to dashboard.`, [
+        { text: 'OK', onPress: finishAndGo },
+      ]);
+    } finally {
+      setLoadingDemo(false);
+    }
+  };
+
+  const startSmsScan = async () => {
+    triggerHaptic('medium');
+
+    // 1. Android Native Environment
+    if (Platform.OS === 'android') {
+      const ok = await requestPermission();
+      setSmsGranted(ok);
+
+      if (ok && isSupported()) {
+        await registerBackgroundSync().catch(() => {});
+        const res = await syncSms({ full: true, onProgress: setProgress });
+        if (res.phase === 'error') {
+          triggerHaptic('error');
+          Alert.alert(
+            'Sync Notice',
+            res.error || 'Failed to scan SMS inbox.',
+            [
+              { text: 'Load Sample Data', onPress: loadSampleData },
+              { text: 'Go to Dashboard', onPress: finishAndGo },
+            ]
+          );
+          return;
+        }
+
+        if (res.read === 0 || res.kept === 0) {
+          triggerHaptic('warning');
+          Alert.alert(
+            'No Bank SMS Found',
+            'No bank transaction messages were detected in your inbox.\n\nWould you like to load realistic sample bank transactions (HDFC, SBI, Swiggy, Salary) so your charts and AI copilot have full data?',
+            [
+              { text: 'Load Sample Data', onPress: loadSampleData },
+              { text: 'Continue to Dashboard', onPress: finishAndGo },
+            ]
+          );
+          return;
+        }
+
+        triggerHaptic('success');
+        await markBackfillDone();
+        await finishAndGo();
+        return;
+      }
+    }
+
+    // 2. Web, Expo Go or environment without native SMS provider
+    Alert.alert(
+      'SMS Access Notice',
+      Platform.OS === 'android' && !isSupported()
+        ? 'Automatic SMS reading requires a standalone Android APK build (Expo Go cannot access device SMS).\n\nWould you like to load realistic sample bank transactions so your dashboard is fully populated with charts and AI insights?'
+        : 'Web browsers cannot access phone SMS.\n\nWould you like to load realistic sample bank transactions (HDFC, SBI, ICICI, Swiggy, Salary) so your dashboard is fully populated?',
+      [
+        { text: 'Load Sample Bank Data', onPress: loadSampleData },
+        { text: 'Continue to Dashboard', style: 'cancel', onPress: finishAndGo },
+      ]
+    );
   };
 
   const handleRegisterDirect = async (regEmail: string, regPass: string, regName?: string) => {
@@ -67,12 +159,9 @@ export default function Login() {
     try {
       const res = await api.register(regEmail.trim(), regPass, regName?.trim() || undefined);
       await setToken(res.token);
+      await deleteItem('nryn_finance_onboarded');
       triggerHaptic('success');
-      setSuccessInfo({
-        title: 'Account Created Successfully! 🎉',
-        message: 'Welcome to NRYN Finance! Taking you to your dashboard...',
-      });
-      setTimeout(navigateToApp, 1100);
+      setStep('sms');
     } catch (err: any) {
       triggerHaptic('error');
       const msg = err.body?.message || err.body?.error || err.message || 'Registration failed';
@@ -87,12 +176,9 @@ export default function Login() {
     try {
       const res = await api.login(loginEmail.trim(), loginPass);
       await setToken(res.token);
+      await deleteItem('nryn_finance_onboarded');
       triggerHaptic('success');
-      setSuccessInfo({
-        title: 'Sign In Successful! 🎉',
-        message: `Welcome back${res.user?.name ? `, ${res.user.name}` : ''}! Taking you to your dashboard...`,
-      });
-      setTimeout(navigateToApp, 1100);
+      setStep('sms');
     } catch (err: any) {
       triggerHaptic('error');
       const msg = err.body?.message || err.body?.error || err.message || 'Sign in failed';
@@ -128,21 +214,15 @@ export default function Login() {
       if (mode === 'login') {
         const res = await api.login(trimmedEmail, password);
         await setToken(res.token);
+        await deleteItem('nryn_finance_onboarded');
         triggerHaptic('success');
-        setSuccessInfo({
-          title: 'Sign In Successful! 🎉',
-          message: `Welcome back${res.user?.name ? `, ${res.user.name}` : ''}! Taking you to your dashboard...`,
-        });
-        setTimeout(navigateToApp, 1100);
+        setStep('sms');
       } else {
         const res = await api.register(trimmedEmail, password, name.trim() || undefined);
         await setToken(res.token);
+        await deleteItem('nryn_finance_onboarded');
         triggerHaptic('success');
-        setSuccessInfo({
-          title: 'Account Created Successfully! 🎉',
-          message: 'Welcome to NRYN Finance! Taking you to your dashboard...',
-        });
-        setTimeout(navigateToApp, 1100);
+        setStep('sms');
       }
     } catch (e: any) {
       triggerHaptic('error');
@@ -256,6 +336,90 @@ export default function Login() {
       setForgotBusy(false);
     }
   };
+
+  if (step === 'sms') {
+    return (
+      <ScrollView contentContainerStyle={styles.smsWrap} showsVerticalScrollIndicator={false}>
+        <View style={styles.smsContainer}>
+          <View style={styles.smsShieldWrap}>
+            <Shield size={36} color={theme.colors.accent} />
+          </View>
+
+          <Text style={styles.smsH1}>Reading your bank SMS</Text>
+          <Text style={styles.smsP}>
+            Your bank texts you every time money moves. This app reads those texts on
+            this phone so you never type an expense again.
+          </Text>
+
+          <View style={styles.smsCard}>
+            <Text style={styles.smsCardTitle}>What actually leaves your phone</Text>
+            <View style={styles.smsLiRow}>
+              <Check size={16} color="#10B981" />
+              <Text style={styles.smsLi}>Bank and UPI transaction messages only</Text>
+            </View>
+            <View style={styles.smsLiRow}>
+              <X size={16} color="#FF4757" />
+              <Text style={styles.smsLi}>Messages from people — never read, never sent</Text>
+            </View>
+            <View style={styles.smsLiRow}>
+              <X size={16} color="#FF4757" />
+              <Text style={styles.smsLi}>OTPs — explicitly excluded before anything is uploaded</Text>
+            </View>
+            <Text style={styles.smsNote}>
+              The filter runs on this device, before the network call. Roughly 850 of
+              20,000 messages pass it. This is how the app is built, not a promise.
+            </Text>
+          </View>
+
+          {progress && (
+            <View style={styles.smsCard}>
+              <Text style={styles.smsCardTitle}>
+                {progress.phase === 'done'
+                  ? 'Scan Complete'
+                  : progress.phase === 'error'
+                  ? 'Problem Occurred'
+                  : 'Scanning your inbox…'}
+              </Text>
+              <Text style={styles.smsProgText}>Read {progress.read} messages</Text>
+              <Text style={styles.smsProgText}>Bank messages found: {progress.kept}</Text>
+              <Text style={styles.smsProgText}>
+                Uploaded {progress.uploaded} · duplicates {progress.duplicates}
+              </Text>
+              {progress.error && (
+                <Text style={[styles.smsProgText, { color: theme.colors.danger }]}>
+                  {progress.error}
+                </Text>
+              )}
+            </View>
+          )}
+
+          <Button
+            title={smsGranted ? 'Scanning…' : 'Allow SMS access'}
+            onPress={startSmsScan}
+            loading={progress?.phase === 'reading' || progress?.phase === 'uploading'}
+            size="lg"
+            variant="primary"
+            icon={<ArrowRight size={18} color="#FFFFFF" />}
+            style={styles.smsBtn}
+          />
+
+          <Button
+            title={loadingDemo ? 'Loading Sample Data…' : 'Load Sample Bank Data (Demo)'}
+            onPress={loadSampleData}
+            loading={loadingDemo}
+            size="md"
+            variant="secondary"
+            icon={<Database size={16} color={theme.colors.accent} />}
+            style={styles.smsDemoBtn}
+          />
+
+          <PressableScale onPress={finishAndGo} style={styles.smsSkipWrap}>
+            <Text style={styles.smsSkip}>Skip — I'll add expenses manually</Text>
+          </PressableScale>
+        </View>
+      </ScrollView>
+    );
+  }
 
   return (
     <ScrollView contentContainerStyle={styles.wrap} keyboardShouldPersistTaps="handled">
@@ -756,6 +920,98 @@ const useStyles = makeStyles((t) =>
       color: t.colors.text,
       paddingVertical: 12,
       fontSize: 14,
+    },
+    smsWrap: {
+      flexGrow: 1,
+      backgroundColor: t.colors.bg,
+      padding: 24,
+      justifyContent: 'center',
+    },
+    smsContainer: {
+      maxWidth: 480,
+      width: '100%',
+      alignSelf: 'center',
+      paddingVertical: 20,
+    },
+    smsShieldWrap: {
+      width: 64,
+      height: 64,
+      borderRadius: 20,
+      backgroundColor: t.colors.accentLight || '#FFF3E0',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 20,
+    },
+    smsH1: {
+      color: t.colors.text,
+      fontSize: 28,
+      fontWeight: '800',
+      marginBottom: 8,
+      letterSpacing: -0.5,
+    },
+    smsP: {
+      color: t.colors.textDim,
+      fontSize: 14,
+      lineHeight: 22,
+      marginBottom: 24,
+    },
+    smsCard: {
+      backgroundColor: t.colors.card,
+      borderRadius: 20,
+      padding: 18,
+      marginBottom: 20,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+    },
+    smsCardTitle: {
+      color: t.colors.text,
+      fontSize: 15,
+      fontWeight: '700',
+      marginBottom: 12,
+    },
+    smsLiRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 10,
+      marginBottom: 8,
+    },
+    smsLi: {
+      color: t.colors.text,
+      fontSize: 13,
+      flex: 1,
+      lineHeight: 18,
+    },
+    smsProgText: {
+      color: t.colors.textDim,
+      fontSize: 13,
+      lineHeight: 22,
+    },
+    smsNote: {
+      color: t.colors.textDim,
+      fontSize: 11,
+      marginTop: 10,
+      lineHeight: 16,
+      opacity: 0.8,
+    },
+    smsBtn: {
+      marginTop: 6,
+      backgroundColor: '#FF5722',
+    },
+    smsDemoBtn: {
+      marginTop: 12,
+      borderWidth: 1,
+      borderColor: t.colors.border,
+      backgroundColor: t.colors.card,
+    },
+    smsSkipWrap: {
+      alignSelf: 'center',
+      marginTop: 20,
+      paddingVertical: 8,
+    },
+    smsSkip: {
+      color: t.colors.textDim,
+      fontSize: 13,
+      fontWeight: '500',
     },
   })
 );
