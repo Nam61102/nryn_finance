@@ -1,0 +1,14 @@
+{
+  "name": "nryn-finance",
+  "version": "1.0.0",
+  "private": true,
+  "description": "NRYN Finance Root Deployment Config",
+  "scripts": {
+    "build": "cd nryn-finance/backend && npm install && npm run build",
+    "start": "cd nryn-finance/backend && node server.js",
+    "test": "cd nryn-finance/backend && npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: nryn_finance
+    runtime: node
+    plan: free
+    rootDir: nryn-finance/backend
+    buildCommand: npm install && npm run build
+    startCommand: node server.js
+    envVars:
+      - key: NODE_VERSION
+        value: 20
