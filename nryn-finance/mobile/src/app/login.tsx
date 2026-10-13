@@ -8,6 +8,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
+  Platform,
 } from 'react-native';
 import { router } from 'expo-router';
 import {
@@ -21,6 +22,7 @@ import {
   User as UserIcon,
   KeyRound,
   X,
+  Check,
 } from 'lucide-react-native';
 import { api, setToken, API_BASE } from '../services/api';
 import { useTheme, makeStyles } from '../theme';
@@ -43,6 +45,12 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
 
+  // Success notification state
+  const [successInfo, setSuccessInfo] = useState<{
+    title: string;
+    message: string;
+  } | null>(null);
+
   // Forgot password modal states
   const [showForgotModal, setShowForgotModal] = useState(false);
   const [forgotEmail, setForgotEmail] = useState('');
@@ -50,13 +58,22 @@ export default function Login() {
   const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
   const [forgotBusy, setForgotBusy] = useState(false);
 
+  const navigateToApp = () => {
+    const target = Platform.OS === 'web' ? '/(tabs)' : '/onboarding';
+    router.replace(target as any);
+  };
+
   const handleRegisterDirect = async (regEmail: string, regPass: string, regName?: string) => {
     setBusy(true);
     try {
       const res = await api.register(regEmail.trim(), regPass, regName?.trim() || undefined);
       await setToken(res.token);
       triggerHaptic('success');
-      router.replace('/onboarding');
+      setSuccessInfo({
+        title: 'Account Created Successfully! 🎉',
+        message: 'Welcome to NRYN Finance! Taking you to your dashboard...',
+      });
+      setTimeout(navigateToApp, 1100);
     } catch (err: any) {
       triggerHaptic('error');
       const msg = err.body?.message || err.body?.error || err.message || 'Registration failed';
@@ -72,7 +89,11 @@ export default function Login() {
       const res = await api.login(loginEmail.trim(), loginPass);
       await setToken(res.token);
       triggerHaptic('success');
-      router.replace('/onboarding');
+      setSuccessInfo({
+        title: 'Sign In Successful! 🎉',
+        message: `Welcome back${res.user?.name ? `, ${res.user.name}` : ''}! Taking you to your dashboard...`,
+      });
+      setTimeout(navigateToApp, 1100);
     } catch (err: any) {
       triggerHaptic('error');
       const msg = err.body?.message || err.body?.error || err.message || 'Sign in failed';
@@ -109,12 +130,20 @@ export default function Login() {
         const res = await api.login(trimmedEmail, password);
         await setToken(res.token);
         triggerHaptic('success');
-        router.replace('/onboarding');
+        setSuccessInfo({
+          title: 'Sign In Successful! 🎉',
+          message: `Welcome back${res.user?.name ? `, ${res.user.name}` : ''}! Taking you to your dashboard...`,
+        });
+        setTimeout(navigateToApp, 1100);
       } else {
         const res = await api.register(trimmedEmail, password, name.trim() || undefined);
         await setToken(res.token);
         triggerHaptic('success');
-        router.replace('/onboarding');
+        setSuccessInfo({
+          title: 'Account Created Successfully! 🎉',
+          message: 'Welcome to NRYN Finance! Taking you to your dashboard...',
+        });
+        setTimeout(navigateToApp, 1100);
       }
     } catch (e: any) {
       triggerHaptic('error');
@@ -493,6 +522,61 @@ export default function Login() {
               variant="primary"
               style={{ marginTop: 12, width: '100%' }}
             />
+          </View>
+        </View>
+      </Modal>
+
+      {/* Success Confirmation Modal */}
+      <Modal visible={Boolean(successInfo)} transparent animationType="fade">
+        <View style={styles.modalBackdrop}>
+          <View
+            style={[
+              styles.modalCard,
+              {
+                backgroundColor: theme.colors.card,
+                borderColor: theme.colors.border,
+                alignItems: 'center',
+                paddingVertical: 28,
+              },
+            ]}
+          >
+            <View
+              style={{
+                width: 60,
+                height: 60,
+                borderRadius: 30,
+                backgroundColor: 'rgba(16, 185, 129, 0.15)',
+                borderWidth: 1,
+                borderColor: 'rgba(16, 185, 129, 0.4)',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 16,
+              }}
+            >
+              <Check size={30} color="#10B981" strokeWidth={3} />
+            </View>
+            <Text
+              style={{
+                fontSize: 18,
+                fontWeight: '800',
+                color: theme.colors.text,
+                textAlign: 'center',
+                marginBottom: 8,
+              }}
+            >
+              {successInfo?.title}
+            </Text>
+            <Text
+              style={{
+                fontSize: 13,
+                color: theme.colors.textDim,
+                textAlign: 'center',
+                lineHeight: 19,
+                paddingHorizontal: 12,
+              }}
+            >
+              {successInfo?.message}
+            </Text>
           </View>
         </View>
       </Modal>
