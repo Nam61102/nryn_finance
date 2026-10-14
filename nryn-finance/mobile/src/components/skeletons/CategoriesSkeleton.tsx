@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, StyleSheet, ScrollView } from 'react-native';
-import { Skeleton } from '../ui';
+import Skeleton from '../ui/Skeleton';
 import { useTheme } from '../../theme';
 
 export default function CategoriesSkeleton() {

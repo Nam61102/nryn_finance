@@ -9,21 +9,38 @@ import { theme } from '../theme';
 /** Boot gate: token? → onboarded? → home. */
 export default function Boot() {
   useEffect(() => {
+    let mounted = true;
     (async () => {
-      const token = await getToken();
-      if (!token) return router.replace('/login');
+      try {
+        const token = await getToken();
+        if (!mounted) return;
+        if (!token) {
+          return router.replace('/login');
+        }
 
-      const onboarded = await getItem('nryn_finance_onboarded');
-      if (!onboarded) {
-        return router.replace('/onboarding');
+        const onboarded = await getItem('nryn_finance_onboarded');
+        if (!mounted) return;
+        if (!onboarded) {
+          return router.replace('/onboarding');
+        }
+
+        if (isSupported() && !(await hasPermission())) {
+          if (!mounted) return;
+          return router.replace('/onboarding');
+        }
+
+        if (!mounted) return;
+        router.replace('/(tabs)');
+      } catch (e) {
+        console.warn('Boot router error:', e);
+        try {
+          if (mounted) router.replace('/login');
+        } catch {}
       }
-
-      if (isSupported() && !(await hasPermission())) {
-        return router.replace('/onboarding');
-      }
-
-      router.replace('/(tabs)');
     })();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   return (

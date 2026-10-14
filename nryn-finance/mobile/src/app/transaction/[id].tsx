@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, Switch, Alert, ActivityIndicator } 
 import { router, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Trash2, AlertTriangle, ShieldCheck } from 'lucide-react-native';
 import { api } from '../../services/api';
-import { formatINR } from '../../utils/format';
+import { formatINR, formatRelativeIST } from '../../utils/format';
 import { FALLBACK_CATEGORIES } from '../../theme';
 import { useTheme, makeStyles } from '../../theme';
 import { triggerHaptic } from '../../utils/haptics';
@@ -72,11 +72,7 @@ export default function TransactionDetail() {
       <Text style={styles.amount}>{formatINR(txn.amount, { decimals: true })}</Text>
       <Text style={styles.merchant}>{txn.merchantName || txn.merchantRaw || 'Unknown Merchant'}</Text>
       <Text style={styles.meta}>
-        {new Date(txn.occurredAt).toLocaleString('en-IN', {
-          timeZone: 'Asia/Kolkata',
-          dateStyle: 'medium',
-          timeStyle: 'short',
-        })}{' '}
+        {formatRelativeIST(txn.occurredAt)}{' '}
         · {txn.method?.toUpperCase()} · {txn.account?.bankName || 'Bank'}
         {txn.account?.last4 ? ` ••${txn.account.last4}` : ''}
       </Text>

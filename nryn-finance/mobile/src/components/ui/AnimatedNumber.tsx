@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Text, StyleSheet, StyleProp, TextStyle, AccessibilityInfo } from 'react-native';
-import { formatCompactINR } from '../../utils/format';
+import { formatCompactINR, formatNumberINR } from '../../utils/format';
 
 interface AnimatedNumberProps {
   value: number; // in rupees or paise (see isPaise)
@@ -21,7 +21,9 @@ export default function AnimatedNumber({
   duration = 700,
   style,
 }: AnimatedNumberProps) {
-  const targetRupees = Math.round(isPaise ? value / 100 : value);
+  const numVal = Number(value);
+  const safeVal = Number.isFinite(numVal) ? numVal : 0;
+  const targetRupees = Math.round(isPaise ? safeVal / 100 : safeVal);
   const [displayValue, setDisplayValue] = useState(targetRupees);
   const prevValueRef = useRef(targetRupees);
 
@@ -42,7 +44,7 @@ export default function AnimatedNumber({
         const endVal = targetRupees;
         const diff = endVal - startVal;
 
-        if (diff === 0) {
+        if (diff === 0 || !Number.isFinite(diff)) {
           setDisplayValue(endVal);
           return;
         }
@@ -57,7 +59,7 @@ export default function AnimatedNumber({
           const easeProgress = 1 - Math.pow(1 - progress, 3);
           const current = Math.round(startVal + diff * easeProgress);
 
-          setDisplayValue(current);
+          setDisplayValue(Number.isFinite(current) ? current : endVal);
 
           if (progress < 1) {
             animId = requestAnimationFrame(tick);
@@ -72,7 +74,7 @@ export default function AnimatedNumber({
         if (isMounted) setDisplayValue(targetRupees);
       });
 
-    return () => {
+  return () => {
       isMounted = false;
       if (animId) cancelAnimationFrame(animId);
     };
@@ -83,7 +85,7 @@ export default function AnimatedNumber({
     return <Text style={[styles.text, style]}>{compactText}{suffix}</Text>;
   }
 
-  const formatted = `${prefix}${displayValue.toLocaleString('en-IN')}${suffix}`;
+  const formatted = `${prefix}${formatNumberINR(displayValue)}${suffix}`;
 
   return <Text style={[styles.text, style]}>{formatted}</Text>;
 }

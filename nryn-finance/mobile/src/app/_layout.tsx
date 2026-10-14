@@ -1,6 +1,9 @@
+import React from 'react';
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ThemeProvider, useTheme } from '../theme';
+
+import ErrorBoundary from '../components/ui/ErrorBoundary';
 
 function RootNavigator() {
   const theme = useTheme();
@@ -30,7 +33,9 @@ function RootNavigator() {
 export default function RootLayout() {
   return (
     <ThemeProvider>
-      <RootNavigator />
+      <ErrorBoundary fallbackTitle="NRYN Finance">
+        <RootNavigator />
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }

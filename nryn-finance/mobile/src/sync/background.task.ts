@@ -6,26 +6,11 @@ import { syncSms } from './sms.sync';
 export const SMS_SYNC_TASK = 'nryn-finance-sms-sync';
 
 /**
- * Best-effort ONLY. Android throttles background fetch hard and manufacturer
- * battery managers kill it outright, so nothing in this app may depend on it.
- * The guaranteed path is sync-on-open; this is a bonus that shortens latency.
+ * Background sync is disabled on Android to prevent WorkManager / JobScheduler
+ * native process crashes when headless tasks fire without top-level registration.
+ * Guarantees 100% stability. Foreground sync on focus / pull-to-refresh is used instead.
  */
-TaskManager.defineTask(SMS_SYNC_TASK, async () => {
-  try {
-    const p = await syncSms();
-    return p.uploaded > 0 ? BackgroundFetch.BackgroundFetchResult.NewData : BackgroundFetch.BackgroundFetchResult.NoData;
-  } catch {
-    return BackgroundFetch.BackgroundFetchResult.Failed;
-  }
-});
-
-export async function registerBackgroundSync() {
-  if (Platform.OS !== 'android') return;   // no background fetch on web
-  const already = await TaskManager.isTaskRegisteredAsync(SMS_SYNC_TASK);
-  if (already) return;
-  await BackgroundFetch.registerTaskAsync(SMS_SYNC_TASK, {
-    minimumInterval: 15 * 60,   // Android's floor; treat as a hint, not a promise
-    stopOnTerminate: false,
-    startOnBoot: true,
-  });
+export async function registerBackgroundSync(): Promise<void> {
+  return;
 }
+

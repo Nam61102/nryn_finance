@@ -2,14 +2,15 @@ import React from 'react';
 import { Text, View, StyleSheet } from 'react-native';
 import { useTheme, makeStyles, Theme } from '../theme';
 import { formatINR, formatRelativeIST } from '../utils/format';
-import { PressableScale } from './ui';
+import PressableScale from './ui/PressableScale';
 
 export default function ExpenseRow({ txn, onPress }: { txn: any; onPress?: () => void }) {
   const theme = useTheme();
   const styles = useStyles();
 
-  const when = formatRelativeIST(txn.occurredAt);
-  const isCredit = txn.direction === 'credit';
+  const when = formatRelativeIST(txn?.occurredAt);
+  const isCredit = txn?.direction === 'credit';
+  const catStr = txn?.category ? String(txn.category).replace('_', ' ') : '';
 
   return (
     <PressableScale
@@ -19,20 +20,20 @@ export default function ExpenseRow({ txn, onPress }: { txn: any; onPress?: () =>
     >
       {/* Merchant / Category Icon in Tinted Container */}
       <View style={styles.iconWrap}>
-        <Text style={styles.iconText}>{txn.merchantIcon || '📦'}</Text>
+        <Text style={styles.iconText}>{txn?.merchantIcon || '📦'}</Text>
       </View>
 
       {/* Main Info */}
       <View style={styles.infoCol}>
         <View style={styles.nameRow}>
           <Text style={styles.name} numberOfLines={1}>
-            {txn.merchantName || txn.merchantRaw || 'Unknown'}
+            {txn?.merchantName || txn?.merchantRaw || 'Unknown'}
           </Text>
-          {txn.needsReview && <View style={styles.dotReview} />}
-          {txn.source === 'manual' && <Text style={styles.tag}>manual</Text>}
+          {txn?.needsReview && <View style={styles.dotReview} />}
+          {txn?.source === 'manual' && <Text style={styles.tag}>manual</Text>}
         </View>
         <Text style={styles.subtext}>
-          {txn.category ? `${txn.category.replace('_', ' ')} · ` : ''}{when}
+          {catStr ? `${catStr} · ` : ''}{when}
         </Text>
       </View>
 
@@ -43,7 +44,7 @@ export default function ExpenseRow({ txn, onPress }: { txn: any; onPress?: () =>
           { color: isCredit ? theme.success : theme.text },
         ]}
       >
-        {isCredit ? '+' : ''}{formatINR(txn.amount)}
+        {isCredit ? '+' : ''}{formatINR(txn?.amount)}
       </Text>
     </PressableScale>
   );

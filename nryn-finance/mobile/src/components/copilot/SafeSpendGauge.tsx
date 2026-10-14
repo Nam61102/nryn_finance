@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Animated, AccessibilityInfo }
 import { router } from 'expo-router';
 import { Target, ArrowRight } from 'lucide-react-native';
 import { useTheme, makeStyles, Theme } from '../../theme';
-import { AnimatedNumber } from '../ui';
+import AnimatedNumber from '../ui/AnimatedNumber';
 import { haptic } from '../../utils/haptics';
 
 interface SafeSpendProps {

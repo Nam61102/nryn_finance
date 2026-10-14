@@ -7,3 +7,4 @@ export { default as SectionHeader } from './SectionHeader';
 export { default as Skeleton } from './Skeleton';
 export { default as EmptyState } from './EmptyState';
 export { default as AnimatedNumber } from './AnimatedNumber';
+export { default as ErrorBoundary } from './ErrorBoundary';

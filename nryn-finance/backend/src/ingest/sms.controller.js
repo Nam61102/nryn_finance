@@ -130,22 +130,7 @@ async function seedDemo(req, res) {
       `Rs.85,000.00 credited to a/c XX1234 on ${fmt(sal)} by NEFT from KINDERSPORTS LLP. Avl bal Rs 1,02,340.55`
     );
 
-    // Default monthly budgets
-    const budgets = [
-      ['total', null, 3000000],
-      ['category', 'food', 800000],
-      ['category', 'groceries', 600000],
-      ['category', 'transport', 400000],
-      ['category', 'shopping', 700000],
-      ['category', 'entertainment', 200000],
-    ];
-    for (const [scope, category, amount] of budgets) {
-      await Budget.updateOne(
-        { userId, scope, category, month: null },
-        { $set: { amount, period: 'monthly' } },
-        { upsert: true }
-      );
-    }
+    // (removed) Never create budgets automatically — budgets are user-set only.
 
     const parsed = await drainPending({ limit: 500 });
     res.json({ ok: true, queued: n, parsed });
@@ -160,11 +145,15 @@ async function resetData(req, res) {
     const userId = req.userId;
     const tx = await Transaction.deleteMany({ userId });
     const raw = await RawMessage.deleteMany({ userId });
+    // Remove auto-created budgets and the AI's per-user category guesses so nothing fake survives a reset.
+    const budgets = await Budget.deleteMany({ userId });
+    await require('../db/models/Merchant').deleteMany({ userId, source: 'llm' });
     await Device.updateMany({ userId }, { $set: { lastSmsDate: 0, backfillDoneAt: null } });
     res.json({
       ok: true,
       deletedTransactions: tx.deletedCount || 0,
       deletedMessages: raw.deletedCount || 0,
+      deletedBudgets: budgets.deletedCount || 0,
       message: 'All transactions and SMS data wiped successfully.',
     });
   } catch (err) {

@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Sparkles, TrendingDown, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react-native';
+import { Sparkles, ChevronDown, ChevronUp, Lightbulb } from 'lucide-react-native';
 import { useTheme, makeStyles, Theme } from '../../theme';
 import { haptic } from '../../utils/haptics';
+import { formatNumberINR } from '../../utils/format';
 
 export interface RecommendationItem {
   id: string;
@@ -36,7 +37,6 @@ interface AiRecommendationsCardProps {
 
 export default function AiRecommendationsCard({
   data,
-  onAskCopilot,
   maxInitial = 2,
 }: AiRecommendationsCardProps) {
   const theme = useTheme();
@@ -45,9 +45,10 @@ export default function AiRecommendationsCard({
 
   if (!data) return null;
 
-  const { totalPotentialSavingsINR, recommendations } = data;
+  const totalPotentialSavingsINR = Number(data?.totalPotentialSavingsINR) || 0;
+  const recommendations = Array.isArray(data?.recommendations) ? data.recommendations : [];
 
-  if (!recommendations || recommendations.length === 0) {
+  if (recommendations.length === 0) {
     return (
       <View style={styles.card}>
         <View style={styles.headerRow}>
@@ -91,10 +92,10 @@ export default function AiRecommendationsCard({
             <Text style={styles.subtitle}>Smart spend analysis & savings tips</Text>
           </View>
         </View>
-        {totalPotentialSavingsINR && totalPotentialSavingsINR > 0 ? (
+        {totalPotentialSavingsINR > 0 ? (
           <View style={styles.savingsBadge}>
             <Text style={styles.savingsBadgeText}>
-              Save ~₹{totalPotentialSavingsINR.toLocaleString('en-IN')}/mo
+              Save ~₹{formatNumberINR(totalPotentialSavingsINR)}/mo
             </Text>
           </View>
         ) : null}
@@ -102,18 +103,18 @@ export default function AiRecommendationsCard({
 
       {/* Recommendations List */}
       <View style={styles.list}>
-        {displayed.map((rec) => {
+        {displayed.map((rec, idx) => {
           const isHigh = rec.severity === 'high';
 
           return (
-            <View key={rec.id} style={styles.itemCard}>
+            <View key={rec.id || `rec-${idx}`} style={styles.itemCard}>
               <View style={styles.itemHeader}>
                 <View style={styles.merchantLeft}>
                   <View style={styles.iconBox}>
                     <Text style={styles.itemIcon}>{rec.icon || '🛍️'}</Text>
                   </View>
                   <View style={styles.merchantDetails}>
-                    <Text style={styles.merchantName}>{rec.merchantName || rec.title}</Text>
+                    <Text style={styles.merchantName}>{rec.merchantName || rec.title || 'Spend'}</Text>
                     <Text style={styles.comparisonText}>
                       {rec.comparisonText || `${rec.orderCount || 0} orders recorded`}
                     </Text>
@@ -144,7 +145,7 @@ export default function AiRecommendationsCard({
               <View style={styles.statRow}>
                 <View style={styles.statCol}>
                   <Text style={styles.statLabel}>Total Spend</Text>
-                  <Text style={styles.statValue}>₹{rec.totalSpentINR.toLocaleString('en-IN')}</Text>
+                  <Text style={styles.statValue}>₹{formatNumberINR(rec.totalSpentINR)}</Text>
                 </View>
                 {rec.percentOfTotal !== undefined && rec.percentOfTotal > 0 && (
                   <View style={styles.statCol}>
@@ -158,16 +159,18 @@ export default function AiRecommendationsCard({
                   <View style={styles.statCol}>
                     <Text style={styles.statLabel}>Target Savings</Text>
                     <Text style={[styles.statValue, { color: theme.success }]}>
-                      ~₹{rec.potentialSavingsINR.toLocaleString('en-IN')}
+                      ~₹{formatNumberINR(rec.potentialSavingsINR)}
                     </Text>
                   </View>
                 )}
               </View>
 
               {/* AI Insight Box */}
-              <View style={styles.aiBox}>
-                <Text style={styles.aiBoxText}>{rec.aiSuggestion}</Text>
-              </View>
+              {rec.aiSuggestion ? (
+                <View style={styles.aiBox}>
+                  <Text style={styles.aiBoxText}>{rec.aiSuggestion}</Text>
+                </View>
+              ) : null}
             </View>
           );
         })}

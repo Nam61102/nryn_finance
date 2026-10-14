@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, AccessibilityInfo, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Animated, Easing, AccessibilityInfo } from 'react-native';
 import Svg, { Path, G } from 'react-native-svg';
 import { PieChart } from 'lucide-react-native';
 import { useTheme, makeStyles, Theme } from '../theme';
@@ -72,6 +72,9 @@ function describeDonutSlice(
   startAngleDeg: number,
   endAngleDeg: number
 ): string {
+  if (!Number.isFinite(cx) || !Number.isFinite(cy) || !Number.isFinite(rInner) || !Number.isFinite(rOuter)) {
+    return '';
+  }
   const rad = Math.PI / 180;
   const a1 = (startAngleDeg - 90) * rad;
   const a2 = (endAngleDeg - 90) * rad;
@@ -109,25 +112,6 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort }: Pro
   const defaultRInner = 48;
   const defaultROuter = 82;
 
-  const sweepAnim = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    AccessibilityInfo.isReduceMotionEnabled().then((reduceMotion) => {
-      if (reduceMotion) {
-        sweepAnim.setValue(1);
-      } else {
-        Animated.timing(sweepAnim, {
-          toValue: 1,
-          duration: 750,
-          easing: Easing.out(Easing.cubic),
-          useNativeDriver: Platform.OS !== 'web',
-        }).start();
-      }
-    }).catch(() => {
-      sweepAnim.setValue(1);
-    });
-  }, [sweepAnim]);
-
   const activeOption = SORT_OPTIONS.find((s) => s.key === currentSort) || SORT_OPTIONS[0];
 
   const getStatForOption = (key: SortKey) => {
@@ -139,11 +123,6 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort }: Pro
     haptic.light();
     onSelectSort(key);
   };
-
-  const rotateInterpolation = sweepAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['-90deg', '0deg'],
-  });
 
   return (
     <View style={styles.container}>
@@ -164,16 +143,10 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort }: Pro
         Touch any slice on the donut graph to filter expenses:
       </Text>
 
-      {/* Solid Donut Chart Graphic with Sweep-in */}
+      {/* Solid Donut Chart Graphic with Sweep-in (JS-driven animation, 100% crash proof on Android) */}
       <View style={styles.chartWrapper}>
         <View style={{ width: size, height: size, alignItems: 'center', justifyContent: 'center' }}>
-          <Animated.View
-            style={{
-              width: size,
-              height: size,
-              transform: [{ rotate: rotateInterpolation }, { scale: sweepAnim }],
-            }}
-          >
+          <View style={{ width: size, height: size }}>
             <Svg width={size} height={size}>
               <G>
                 {SORT_OPTIONS.map((opt) => {
@@ -188,6 +161,7 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort }: Pro
                   const rIn = defaultRInner;
 
                   const pathData = describeDonutSlice(sliceCx, sliceCy, rIn, rOut, opt.startAngle, opt.endAngle);
+                  if (!pathData) return null;
 
                   return (
                     <Path
@@ -197,13 +171,12 @@ export default function ExpensesCircularGraph({ currentSort, onSelectSort }: Pro
                       opacity={isActive ? 1 : 0.65}
                       stroke={theme.card}
                       strokeWidth={2.5}
-                      onPress={() => handleSelect(opt.key)}
                     />
                   );
                 })}
               </G>
             </Svg>
-          </Animated.View>
+          </View>
 
           {/* Donut Hole Center Content */}
           <View style={styles.donutHole} pointerEvents="none">

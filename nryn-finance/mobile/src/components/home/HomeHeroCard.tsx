@@ -3,8 +3,10 @@ import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { ArrowRight, Sparkles, Target } from 'lucide-react-native';
 import { useTheme, makeStyles, Theme } from '../../theme';
-import { GradientCard, AnimatedNumber } from '../ui';
+import GradientCard from '../ui/GradientCard';
+import AnimatedNumber from '../ui/AnimatedNumber';
 import { haptic } from '../../utils/haptics';
+import { formatNumberINR } from '../../utils/format';
 
 interface HomeHeroCardProps {
   safeSpend: {
@@ -33,7 +35,7 @@ export default function HomeHeroCard({ safeSpend }: HomeHeroCardProps) {
   const hasBudget = Boolean(safeSpend?.hasBudget);
 
   if (!hasBudget) {
-    const todaySpent = safeSpend?.todaySpentINR || 0;
+    const todaySpent = Number(safeSpend?.todaySpentINR) || 0;
 
     return (
       <View style={styles.wrap}>
@@ -70,16 +72,16 @@ export default function HomeHeroCard({ safeSpend }: HomeHeroCardProps) {
     );
   }
 
-  const dailySafeLimit = safeSpend?.dailySafeSpendINR || 0;
-  const todayRemaining = safeSpend?.todayRemainingINR || 0;
-  const todaySpent = safeSpend?.todaySpentINR || 0;
-  const daysLeft = safeSpend?.daysRemaining || 1;
-  const monthTotal = safeSpend?.totalBudgetINR || 0;
-  const monthSpent = safeSpend?.totalSpentSoFarINR || 0;
+  const dailySafeLimit = Number(safeSpend?.dailySafeSpendINR) || 0;
+  const todayRemaining = Number(safeSpend?.todayRemainingINR) || 0;
+  const todaySpent = Number(safeSpend?.todaySpentINR) || 0;
+  const daysLeft = Number(safeSpend?.daysRemaining) || 1;
+  const monthTotal = Number(safeSpend?.totalBudgetINR) || 0;
+  const monthSpent = Number(safeSpend?.totalSpentSoFarINR) || 0;
   const monthLeft = Math.max(0, monthTotal - monthSpent);
 
-  const spentRatio = Math.min(1, todaySpent / Math.max(1, dailySafeLimit));
-  const progressPct = Math.round(spentRatio * 100);
+  const spentRatio = dailySafeLimit > 0 ? todaySpent / dailySafeLimit : 0;
+  const progressPct = Number.isFinite(spentRatio) ? Math.max(0, Math.min(100, Math.round(spentRatio * 100))) : 0;
 
   return (
     <View style={styles.wrap}>
@@ -107,23 +109,23 @@ export default function HomeHeroCard({ safeSpend }: HomeHeroCardProps) {
           </View>
           <View style={styles.progressLabelRow}>
             <Text style={styles.progressLabel}>
-              Spent today: ₹{todaySpent.toLocaleString('en-IN')}
+              Spent today: ₹{formatNumberINR(todaySpent)}
             </Text>
             <Text style={styles.progressLabel}>
-              Daily target: ₹{dailySafeLimit.toLocaleString('en-IN')}
+              Daily target: ₹{formatNumberINR(dailySafeLimit)}
             </Text>
           </View>
         </View>
 
-        {safeSpend?.insightMessage && (
+        {safeSpend?.insightMessage ? (
           <Text style={styles.insightText} numberOfLines={2}>
             {safeSpend.insightMessage}
           </Text>
-        )}
+        ) : null}
 
         <View style={styles.footerRow}>
           <Text style={styles.footerText}>
-            ₹{monthLeft.toLocaleString('en-IN')} left this month · {daysLeft} days to go
+            ₹{formatNumberINR(monthLeft)} left this month · {daysLeft} days to go
           </Text>
         </View>
       </GradientCard>

@@ -6,7 +6,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "userInterfaceStyle": "dark",
-    "newArchEnabled": true,
+    "newArchEnabled": false,
     "android": {
       "package": "in.kindersports.nrynfinance",
       "adaptiveIcon": {
@@ -14,7 +14,9 @@
       },
       "permissions": [
         "READ_SMS",
-        "RECEIVE_SMS"
+        "RECEIVE_SMS",
+        "VIBRATE",
+        "INTERNET"
       ]
     },
     "ios": {

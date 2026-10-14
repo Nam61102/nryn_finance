@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl, StyleSheet, Alert } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Inbox } from 'lucide-react-native';
@@ -16,7 +16,9 @@ import AiRecommendationsCard from '../../components/copilot/AiRecommendationsCar
 import HomeHeader from '../../components/home/HomeHeader';
 import HomeHeroCard from '../../components/home/HomeHeroCard';
 import MonthComparisonRow from '../../components/home/MonthComparisonRow';
-import { SectionHeader, EmptyState } from '../../components/ui';
+import SectionHeader from '../../components/ui/SectionHeader';
+import EmptyState from '../../components/ui/EmptyState';
+import ErrorBoundary from '../../components/ui/ErrorBoundary';
 import { HomeSkeleton } from '../../components/skeletons';
 import { haptic } from '../../utils/haptics';
 
@@ -38,6 +40,8 @@ export default function Home() {
   const [subs, setSubs] = useState<any>(null);
   const [recommendations, setRecommendations] = useState<any>(null);
 
+  const initialSyncTimer = useRef<NodeJS.Timeout | null>(null);
+
   const load = useCallback(
     async (m?: string) => {
       try {
@@ -50,16 +54,18 @@ export default function Home() {
           api.getSubscriptions().catch(() => null),
           api.getRecommendations(m).catch(() => null),
         ]);
-        if (mo?.months) setMonths(mo.months);
+        if (mo?.months && Array.isArray(mo.months)) setMonths(mo.months);
         if (st) {
           setStatus(st);
-          if (st.period?.month) setMonth(st.period.month);
+          if (st.period?.month && !m) setMonth(st.period.month);
         }
-        if (tx?.transactions) setTxns(tx.transactions);
+        if (tx?.transactions && Array.isArray(tx.transactions)) setTxns(tx.transactions);
         if (ss?.ok) setSafeSpend(ss);
-        if (an?.anomalies) setAnomalies(an.anomalies);
+        if (an?.anomalies && Array.isArray(an.anomalies)) setAnomalies(an.anomalies);
         if (sb?.ok) setSubs(sb);
         if (rec?.ok) setRecommendations(rec);
+      } catch (e: any) {
+        console.warn('Dashboard load error:', e);
       } finally {
         setLoading(false);
       }
@@ -71,16 +77,17 @@ export default function Home() {
     setSort(newSort);
     // Instant in-memory sort feedback
     setTxns((prev) => {
+      if (!Array.isArray(prev)) return [];
       const copy = [...prev];
-      if (newSort === 'amount_desc') return copy.sort((a, b) => b.amount - a.amount);
-      if (newSort === 'amount_asc') return copy.sort((a, b) => a.amount - b.amount);
+      if (newSort === 'amount_desc') return copy.sort((a, b) => (b?.amount || 0) - (a?.amount || 0));
+      if (newSort === 'amount_asc') return copy.sort((a, b) => (a?.amount || 0) - (b?.amount || 0));
       if (newSort === 'date_desc')
         return copy.sort(
-          (a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()
+          (a, b) => new Date(b?.occurredAt || 0).getTime() - new Date(a?.occurredAt || 0).getTime()
         );
       if (newSort === 'date_asc')
         return copy.sort(
-          (a, b) => new Date(a.occurredAt).getTime() - new Date(b.occurredAt).getTime()
+          (a, b) => new Date(a?.occurredAt || 0).getTime() - new Date(b?.occurredAt || 0).getTime()
         );
       return copy;
     });
@@ -88,18 +95,12 @@ export default function Home() {
 
   useEffect(() => {
     load(month || undefined);
-  }, [sort]);
+  }, [sort, load]);
 
+  // Gentle focus refresh — reads latest database state without querying native telephony
   useFocusEffect(
     useCallback(() => {
       load(month || undefined);
-      syncSms()
-        .then((p) => {
-          if (p && p.uploaded > 0) {
-            load(month || undefined);
-          }
-        })
-        .catch(() => {});
     }, [month, load])
   );
 
@@ -115,7 +116,7 @@ export default function Home() {
         await load(month || undefined);
       }
     } catch (e: any) {
-      console.error('Refresh error:', e);
+      console.warn('Refresh error:', e);
     } finally {
       setRefreshing(false);
     }
@@ -126,130 +127,133 @@ export default function Home() {
   }
 
   const ring = status?.ring;
-  const noBudget = !ring?.total;
-  const recentTxns = txns.slice(0, 5);
+  const noBudget = !ring?.total || ring.total <= 0;
+  const safeTxns = Array.isArray(txns) ? txns : [];
+  const recentTxns = safeTxns.slice(0, 5);
 
   return (
-    <View style={styles.container}>
-      <ScrollView
-        style={styles.scrollView}
-        contentContainerStyle={styles.scrollContent}
-        showsVerticalScrollIndicator={false}
-        refreshControl={
-          <RefreshControl
+    <ErrorBoundary fallbackTitle="Dashboard" onReset={() => load(month || undefined)}>
+      <View style={styles.container}>
+        <ScrollView
+          style={styles.scrollView}
+          contentContainerStyle={styles.scrollContent}
+          showsVerticalScrollIndicator={false}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor={theme.accent}
+              colors={[theme.accent]}
+            />
+          }
+        >
+          {/* 1. Header (Greeting, Avatar, Review Count) */}
+          <HomeHeader
+            userName="there"
+            needsReviewCount={status?.needsReview || 0}
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={theme.accent}
-            colors={[theme.accent]}
-          />
-        }
-      >
-        {/* 1. Header (Greeting, Avatar, Review Count) */}
-        <HomeHeader
-          userName="there"
-          needsReviewCount={status?.needsReview || 0}
-          refreshing={refreshing}
-          onRefresh={onRefresh}
-        />
-
-        {/* 2. HERO CARD (Focal visual anchor) */}
-        <HomeHeroCard safeSpend={safeSpend} />
-
-        {/* 3. Anomaly Alert Banner (Dismissible, only if anomalies exist) */}
-        <AnomalyAlertBanner anomalies={anomalies} />
-
-        {/* 4. Month Switcher + This vs Last Month Stats */}
-        <MonthComparisonRow
-          months={months}
-          month={month}
-          onSelectMonth={(m) => {
-            setMonth(m);
-            load(m);
-          }}
-          status={status}
-        />
-
-        {/* 5. Pace Banner (if budget exists) */}
-        {status?.pace && !noBudget && <PaceBanner pace={status.pace} />}
-
-        {/* 6. Category Chips (Horizontal Scroll) */}
-        {status?.chips?.length > 0 && (
-          <View style={styles.chipsSection}>
-            <SectionHeader title="Category Budgets" />
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.chipsScroll}
-            >
-              {status.chips.map((c: any) => (
-                <CategoryChip
-                  key={c.category}
-                  chip={c}
-                  onPress={() => router.push(`/transactions?category=${c.category}&month=${month}`)}
-                />
-              ))}
-            </ScrollView>
-          </View>
-        )}
-
-        {/* 7. AI Insights Card (Recommendations: Top 1-2 items) */}
-        <View style={styles.sectionWrap}>
-          <AiRecommendationsCard data={recommendations} maxInitial={2} />
-        </View>
-
-        {/* 8. Expenses Circular Donut Graph (4 sort slices with sweep-in) */}
-        <ExpensesCircularGraph
-          currentSort={sort}
-          onSelectSort={handleSelectSort}
-          txns={txns}
-          totalCount={txns.length}
-        />
-
-        {/* 9. Subscriptions Card */}
-        <SubscriptionCard data={subs} />
-
-        {/* 10. Recent Transactions */}
-        <View style={styles.txnsSection}>
-          <SectionHeader
-            title="Recent Expenses"
-            badge={txns.length > 0 ? `${txns.length} total` : undefined}
-            actionLabel={txns.length > 5 ? 'See all' : undefined}
-            onAction={() => router.push(`/transactions?month=${month}`)}
           />
 
-          {recentTxns.length === 0 ? (
-            <View>
-              <EmptyState
-                icon={<Inbox size={28} color={theme.accent} />}
-                title="No expenses recorded yet"
-                subtitle={`No transactions found in ${status?.period?.label || 'this period'}. Pull down to sync SMS, or load sample bank data.`}
-                actionTitle="SMS Setup / Load Sample Data"
-                onAction={() => router.push('/onboarding')}
-              />
-              <TouchableOpacity
-                onPress={() => router.push('/add')}
-                style={{ alignSelf: 'center', marginTop: -8, marginBottom: 16, padding: 8 }}
+          {/* 2. HERO CARD (Focal visual anchor) */}
+          <HomeHeroCard safeSpend={safeSpend} />
+
+          {/* 3. Anomaly Alert Banner (Dismissible, only if anomalies exist) */}
+          <AnomalyAlertBanner anomalies={anomalies} />
+
+          {/* 4. Month Switcher + This vs Last Month Stats */}
+          <MonthComparisonRow
+            months={months}
+            month={month}
+            onSelectMonth={(m) => {
+              setMonth(m);
+              load(m);
+            }}
+            status={status}
+          />
+
+          {/* 5. Pace Banner (if budget exists) */}
+          {status?.pace && !noBudget && <PaceBanner pace={status.pace} />}
+
+          {/* 6. Category Chips (Horizontal Scroll) */}
+          {status?.chips?.length > 0 && (
+            <View style={styles.chipsSection}>
+              <SectionHeader title="Category Budgets" />
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.chipsScroll}
               >
-                <Text style={{ color: theme.textDim, fontSize: 13, fontWeight: '500' }}>
-                  or + Add expense manually
-                </Text>
-              </TouchableOpacity>
+                {status.chips.map((c: any) => (
+                  <CategoryChip
+                    key={c.category || Math.random().toString()}
+                    chip={c}
+                    onPress={() => router.push(`/transactions?category=${c.category}&month=${month}`)}
+                  />
+                ))}
+              </ScrollView>
             </View>
-          ) : (
-            recentTxns.map((t) => (
-              <ExpenseRow
-                key={t._id}
-                txn={t}
-                onPress={() => router.push(`/transaction/${t._id}`)}
-              />
-            ))
           )}
-        </View>
-      </ScrollView>
 
-      {/* Floating Autonomous AI Copilot Drawer */}
-      <CopilotDrawer />
-    </View>
+          {/* 7. AI Insights Card (Recommendations: Top 1-2 items) */}
+          <View style={styles.sectionWrap}>
+            <AiRecommendationsCard data={recommendations} maxInitial={2} />
+          </View>
+
+          {/* 8. Expenses Circular Donut Graph (4 sort slices with sweep-in) */}
+          <ExpensesCircularGraph
+            currentSort={sort}
+            onSelectSort={handleSelectSort}
+            txns={safeTxns}
+            totalCount={safeTxns.length}
+          />
+
+          {/* 9. Subscriptions Card */}
+          <SubscriptionCard data={subs} />
+
+          {/* 10. Recent Transactions */}
+          <View style={styles.txnsSection}>
+            <SectionHeader
+              title="Recent Expenses"
+              badge={safeTxns.length > 0 ? `${safeTxns.length} total` : undefined}
+              actionLabel={safeTxns.length > 5 ? 'See all' : undefined}
+              onAction={() => router.push(`/transactions?month=${month}`)}
+            />
+
+            {recentTxns.length === 0 ? (
+              <View>
+                <EmptyState
+                  icon={<Inbox size={28} color={theme.accent} />}
+                  title="No expenses recorded yet"
+                  subtitle={`No transactions found in ${status?.period?.label || 'this period'}. Pull down to sync SMS, or load sample bank data.`}
+                  actionTitle="SMS Setup / Load Sample Data"
+                  onAction={() => router.push('/onboarding')}
+                />
+                <TouchableOpacity
+                  onPress={() => router.push('/add')}
+                  style={{ alignSelf: 'center', marginTop: -8, marginBottom: 16, padding: 8 }}
+                >
+                  <Text style={{ color: theme.textDim, fontSize: 13, fontWeight: '500' }}>
+                    or + Add expense manually
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              recentTxns.map((t) => (
+                <ExpenseRow
+                  key={t?._id || Math.random().toString()}
+                  txn={t}
+                  onPress={() => router.push(`/transaction/${t._id}`)}
+                />
+              ))
+            )}
+          </View>
+        </ScrollView>
+
+        {/* Floating Autonomous AI Copilot Drawer */}
+        <CopilotDrawer />
+      </View>
+    </ErrorBoundary>
   );
 }
 

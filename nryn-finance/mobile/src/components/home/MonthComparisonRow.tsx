@@ -5,6 +5,7 @@ import { TrendingDown, TrendingUp, Minus, Target } from 'lucide-react-native';
 import { useTheme, makeStyles, Theme } from '../../theme';
 import MonthSwitcher from '../MonthSwitcher';
 import { haptic } from '../../utils/haptics';
+import { formatNumberINR } from '../../utils/format';
 
 interface MonthComparisonRowProps {
   months: any[];
@@ -24,13 +25,16 @@ export default function MonthComparisonRow({
 
   const comparison = status?.comparison;
   const ring = status?.ring;
-  const noBudget = !ring?.total;
+  const noBudget = !ring?.total || ring.total <= 0;
 
-  const currentSpent = ((ring?.spent || 0) / 100).toLocaleString('en-IN');
-  const prevSpent = ((comparison?.lastMonthSpent || 0) / 100).toLocaleString('en-IN');
+  const currentSpent = formatNumberINR((ring?.spent || 0) / 100);
+  const prevSpent = formatNumberINR((comparison?.lastMonthSpent || 0) / 100);
 
   const isSaved = comparison?.isSaved;
   const isMore = comparison?.isMore;
+
+  const rawRatio = Number(ring?.ratio);
+  const safeRatioPct = Number.isFinite(rawRatio) ? Math.max(0, Math.min(100, Math.round(rawRatio * 100))) : 0;
 
   return (
     <View style={styles.container}>
@@ -77,7 +81,7 @@ export default function MonthComparisonRow({
                 isMore && { color: theme.danger },
               ]}
             >
-              {comparison.comparisonText}
+              {comparison.comparisonText || 'Tracking active'}
             </Text>
           </View>
         )}
@@ -105,20 +109,20 @@ export default function MonthComparisonRow({
           >
             <View style={styles.budgetHeader}>
               <Text style={styles.budgetLabel}>
-                Monthly Budget: ₹{((ring.total || 0) / 100).toLocaleString('en-IN')}
+                Monthly Budget: ₹{formatNumberINR((ring?.total || 0) / 100)}
               </Text>
-              <Text style={[styles.budgetStatus, ring.over && { color: theme.danger }]}>
-                {ring.over
-                  ? `Over by ₹${(((ring.spent || 0) - (ring.total || 0)) / 100).toLocaleString('en-IN')}`
-                  : `₹${(((ring.remaining || 0)) / 100).toLocaleString('en-IN')} left`}
+              <Text style={[styles.budgetStatus, ring?.over && { color: theme.danger }]}>
+                {ring?.over
+                  ? `Over by ₹${formatNumberINR((((ring?.spent || 0) - (ring?.total || 0))) / 100)}`
+                  : `₹${formatNumberINR((ring?.remaining || 0) / 100)} left`}
               </Text>
             </View>
             <View style={styles.progressBarTrack}>
               <View
                 style={[
                   styles.progressBarFill,
-                  { width: `${Math.min((ring.ratio || 0) * 100, 100)}%` },
-                  ring.over && { backgroundColor: theme.danger },
+                  { width: `${safeRatioPct}%` },
+                  ring?.over && { backgroundColor: theme.danger },
                 ]}
               />
             </View>

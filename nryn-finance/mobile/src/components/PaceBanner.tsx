@@ -15,7 +15,7 @@ export default function PaceBanner({ pace }: PaceProps) {
   const styles = useStyles();
 
   const getTone = () => {
-    switch (pace.state) {
+    switch (pace?.state) {
       case 'good':
         return {
           bg: theme.successLight,
@@ -51,10 +51,12 @@ export default function PaceBanner({ pace }: PaceProps) {
 
   const tone = getTone();
 
+  if (!pace?.copy) return null;
+
   return (
     <View style={[styles.wrap, { backgroundColor: tone.bg, borderColor: tone.border }]}>
       {tone.icon}
-      <Text style={styles.text}>{pace.copy}</Text>
+      <Text style={styles.text}>{pace?.copy}</Text>
     </View>
   );
 }

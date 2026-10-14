@@ -113,20 +113,53 @@ export default function Onboarding() {
         if (ok) {
           await registerBackgroundSync().catch(() => {});
           const res = await syncSms({ full: true, onProgress: setProgress });
-          if (res.phase !== 'error' && res.read > 0 && res.kept > 0) {
+          if (res.phase !== 'error' && res.read > 0) {
             triggerHaptic('success');
             await markBackfillDone();
             await setItem('nryn_finance_onboarded', 'true');
-            setTimeout(() => {
-              router.replace('/(tabs)');
-            }, 600);
+            setSyncing(false);
+            if (res.kept === 0) {
+              Alert.alert(
+                 'Inbox Scanned',
+                `Scanned ${res.read} messages, but no recognized bank transaction texts were found.\n\nYou can still use the app with ₹0 or paste SMS manually!`,
+                [
+                  {
+                    text: 'Go to Dashboard',
+                    onPress: () => {
+                      try {
+                        router.replace('/(tabs)');
+                      } catch {
+                        router.replace('/');
+                      }
+                    },
+                  },
+                ]
+              );
+            } else {
+              Alert.alert(
+                'Scan Complete 🎉',
+                `Scanned ${res.read} messages and successfully imported ${res.kept} bank transaction${res.kept === 1 ? '' : 's'}!`,
+                [
+                  {
+                    text: 'Go to Dashboard',
+                    onPress: () => {
+                      try {
+                        router.replace('/(tabs)');
+                      } catch {
+                        router.replace('/');
+                      }
+                    },
+                  },
+                ]
+              );
+            }
             return;
           } else if (res.phase === 'error') {
             Alert.alert('SMS Sync Notice', res.error || 'No SMS could be read from device.');
             setSyncing(false);
             return;
           } else {
-            Alert.alert('No Bank SMS Found', 'We scanned your inbox but did not find any bank transaction SMS messages.');
+            Alert.alert('Empty Inbox', 'No SMS messages were found in the inbox.');
             setSyncing(false);
             return;
           }
@@ -273,16 +306,6 @@ export default function Onboarding() {
           variant="primary"
           icon={<ArrowRight size={18} color="#FFFFFF" />}
           style={styles.btn}
-        />
-
-        <Button
-          title={loadingDemo ? 'Loading Sample Data…' : 'Load Sample Data (Preview Only — Dummy Spends)'}
-          onPress={loadSampleData}
-          loading={loadingDemo}
-          size="md"
-          variant="secondary"
-          icon={<Database size={16} color={theme.colors.accent} />}
-          style={styles.demoBtn}
         />
 
         <PressableScale onPress={finishAndGo} style={styles.skipWrap}>

@@ -17,7 +17,9 @@ export default function MonthSwitcher({
   const theme = useTheme();
   const styles = useStyles();
 
-  const ordered = [...months].sort((a, b) => a.month.localeCompare(b.month));
+  const ordered = (Array.isArray(months) ? [...months] : []).sort((a, b) =>
+    String(a?.month || '').localeCompare(String(b?.month || ''))
+  );
 
   const handlePress = (mStr: string) => {
     haptic.light();

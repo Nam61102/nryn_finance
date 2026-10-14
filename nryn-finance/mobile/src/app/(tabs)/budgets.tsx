@@ -38,8 +38,14 @@ export default function Budgets() {
       ]);
       setStatus(st);
       setCats(c.categories);
-      const d: Record<string, string> = { total: String(Math.round((st.ring.total || 0) / 100)) };
-      for (const chip of st.chips) d[chip.category] = String(Math.round(chip.budget / 100));
+      const d: Record<string, string> = { total: String(Math.round(((st?.ring?.total || 0) / 100))) };
+      if (Array.isArray(st?.chips)) {
+        for (const chip of st.chips) {
+          if (chip?.category) {
+            d[chip.category] = String(Math.round((chip.budget || 0) / 100));
+          }
+        }
+      }
       setDraft(d);
     } catch (err: any) {
       console.error('Failed to load budgets:', err);
@@ -79,7 +85,7 @@ export default function Budgets() {
       await load();
       haptic.success();
       const label = scope === 'total' ? 'Monthly total budget' : (cats.find(c => c.key === category)?.label || category);
-      Alert.alert('✅ Budget Saved', `${label} set to ₹${value.toLocaleString('en-IN')}`);
+      Alert.alert('✅ Budget Saved', `${label} set to ${formatINR(value)}`);
     } catch (err: any) {
       haptic.error();
       console.error('Save budget error:', err);

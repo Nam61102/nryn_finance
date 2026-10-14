@@ -54,45 +54,63 @@ type ListOpts = {
 };
 
 /**
- * Read a page of the inbox. Pages of ~500 keep memory flat on a 20k-message
- * inbox; the caller checkpoints the cursor after every page so an interrupted
- * backfill resumes instead of restarting (§3.1).
+ * Read a page of the inbox safely without crashing on native or parse errors.
  */
 export function listInbox(opts: ListOpts = {}): Promise<RawSms[]> {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     if (!isSupported()) return resolve([]);
     const SmsAndroid = getSmsAndroid();
     if (!SmsAndroid || typeof SmsAndroid.list !== 'function') {
-      return reject(new Error('SmsAndroid native module is unavailable on this device'));
+      return resolve([]);
     }
 
-    const filter = {
+    const filter: Record<string, any> = {
       box: 'inbox',
       sortOrder: 'date DESC',
-      indexFrom: opts.indexFrom ?? 0,
-      maxCount: opts.maxCount ?? 500,
-      ...(opts.minDate ? { minDate: opts.minDate } : {}),
-      ...(opts.maxDate ? { maxDate: opts.maxDate } : {}),
+      indexFrom: Math.max(0, opts.indexFrom ?? 0),
+      maxCount: Math.max(1, opts.maxCount ?? 500),
     };
 
-    SmsAndroid.list(
-      JSON.stringify(filter),
-      (err: string) => reject(new Error(err)),
-      (_count: number, smsList: string) => {
-        try {
-          const parsed = JSON.parse(smsList) as any[];
-          resolve(
-            parsed.map((m) => ({
-              _id: String(m._id),
-              address: String(m.address || ''),
-              body: String(m.body || ''),
-              date: Number(m.date) || 0,
-            })),
-          );
-        } catch (e: any) {
-          reject(e);
-        }
-      },
-    );
+    if (opts.minDate && opts.minDate > 0) {
+      filter.minDate = opts.minDate;
+    }
+    if (opts.maxDate && opts.maxDate > 0) {
+      filter.maxDate = opts.maxDate;
+    }
+
+    try {
+      SmsAndroid.list(
+        JSON.stringify(filter),
+        (err: string) => {
+          console.warn('SmsAndroid.list warning:', err);
+          resolve([]);
+        },
+        (_count: number, smsList: string) => {
+          try {
+            if (!smsList || typeof smsList !== 'string') {
+              return resolve([]);
+            }
+            const parsed = JSON.parse(smsList);
+            if (!Array.isArray(parsed)) {
+              return resolve([]);
+            }
+            resolve(
+              parsed.map((m) => ({
+                _id: String(m?._id || Math.random().toString(36).slice(2)),
+                address: String(m?.address || ''),
+                body: String(m?.body || ''),
+                date: Number(m?.date) || 0,
+              })),
+            );
+          } catch (e: any) {
+            console.warn('listInbox JSON parse warning:', e);
+            resolve([]);
+          }
+        },
+      );
+    } catch (nativeErr) {
+      console.warn('SmsAndroid.list exception:', nativeErr);
+      resolve([]);
+    }
   });
 }

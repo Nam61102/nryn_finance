@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Animated, Text, View, StyleSheet, Easing, AccessibilityInfo } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, G } from 'react-native-svg';
 import { useTheme, makeStyles, Theme } from '../theme';
 import { formatINR } from '../utils/format';
 
@@ -65,26 +65,28 @@ export default function BudgetRing({
   return (
     <View style={styles.container}>
       <View style={{ width: size, height: size }}>
-        <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            stroke={theme.cardAlt}
-            strokeWidth={stroke}
-            fill="none"
-          />
-          <AnimatedCircle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            stroke={ringColor}
-            strokeWidth={stroke}
-            fill="none"
-            strokeLinecap="round"
-            strokeDasharray={circumference}
-            strokeDashoffset={dashOffset}
-          />
+        <Svg width={size} height={size}>
+          <G rotation={-90} originX={size / 2} originY={size / 2}>
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              stroke={theme.cardAlt}
+              strokeWidth={stroke}
+              fill="none"
+            />
+            <AnimatedCircle
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              stroke={ringColor}
+              strokeWidth={stroke}
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={dashOffset}
+            />
+          </G>
         </Svg>
         <View style={styles.center}>
           <Text style={[styles.big, over && { color: theme.danger }]}>

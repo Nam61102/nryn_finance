@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TouchableOpacity, Linking } from 'react-native'
 import { Repeat, ChevronDown, ChevronUp, ExternalLink, AlertTriangle } from 'lucide-react-native';
 import { useTheme, makeStyles, Theme } from '../../theme';
 import { haptic } from '../../utils/haptics';
+import { formatNumberINR } from '../../utils/format';
 
 interface SubscriptionProps {
   data: {
@@ -12,6 +13,21 @@ interface SubscriptionProps {
     potentialAnnualSavingsINR: number;
     subscriptions: any[];
   } | null;
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function formatRenewalDate(val: any): string {
+  if (!val) return 'Soon';
+  try {
+    const d = new Date(val);
+    if (isNaN(d.getTime())) return 'Soon';
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = MONTHS[d.getMonth()] || '';
+    return `${day} ${month}`;
+  } catch {
+    return 'Soon';
+  }
 }
 
 export default function SubscriptionCard({ data }: SubscriptionProps) {
@@ -41,6 +57,12 @@ export default function SubscriptionCard({ data }: SubscriptionProps) {
     setExpanded(!expanded);
   };
 
+  const count = Number(data?.count) || (data?.subscriptions?.length ?? 0);
+  const monthly = formatNumberINR(data?.totalMonthlyRecurringINR);
+  const annual = formatNumberINR(data?.totalAnnualCostINR);
+  const savings = formatNumberINR(data?.potentialAnnualSavingsINR);
+  const hasSavings = Number(data?.potentialAnnualSavingsINR) > 0;
+
   return (
     <View style={styles.card}>
       <View style={styles.topRow}>
@@ -49,22 +71,22 @@ export default function SubscriptionCard({ data }: SubscriptionProps) {
           <Text style={styles.title}>Subscriptions Tracker</Text>
         </View>
         <View style={styles.badge}>
-          <Text style={styles.badgeText}>{data.count} Active</Text>
+          <Text style={styles.badgeText}>{count} Active</Text>
         </View>
       </View>
 
       <Text style={styles.subtitle}>
-        You are paying ₹{data.totalMonthlyRecurringINR.toLocaleString('en-IN')}/mo (₹{data.totalAnnualCostINR.toLocaleString('en-IN')}/yr) on recurring services.
+        You are paying ₹{monthly}/mo (₹{annual}/yr) on recurring services.
       </Text>
 
       {/* Zombie Savings Callout */}
-      {data.potentialAnnualSavingsINR > 0 && (
+      {hasSavings && (
         <View style={styles.zombieBanner}>
           <AlertTriangle size={18} color={theme.warn} />
           <View style={{ flex: 1 }}>
             <Text style={styles.zombieTitle}>Review Needed</Text>
             <Text style={styles.zombieText}>
-              Cancel unused services to put <Text style={{ fontWeight: '800', color: theme.success }}>₹{data.potentialAnnualSavingsINR.toLocaleString('en-IN')}</Text> back in your pocket annually.
+              Cancel unused services to put <Text style={{ fontWeight: '800', color: theme.success }}>₹{savings}</Text> back in your pocket annually.
             </Text>
           </View>
         </View>
@@ -72,11 +94,11 @@ export default function SubscriptionCard({ data }: SubscriptionProps) {
 
       {/* Subscriptions List */}
       <View style={styles.list}>
-        {(expanded ? data.subscriptions : data.subscriptions.slice(0, 3)).map((sub) => (
-          <View key={sub.id || sub.name} style={styles.subRow}>
+        {(expanded ? data.subscriptions : data.subscriptions.slice(0, 3)).map((sub, idx) => (
+          <View key={sub.id || sub.name || `sub-${idx}`} style={styles.subRow}>
             <View style={{ flex: 1 }}>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-                <Text style={styles.subName}>{sub.name || sub.merchantName}</Text>
+                <Text style={styles.subName}>{sub.name || sub.merchantName || 'Subscription'}</Text>
                 {sub.isZombie && (
                   <View style={styles.zombieBadge}>
                     <Text style={styles.zombieBadgeText}>ALERT</Text>
@@ -84,12 +106,12 @@ export default function SubscriptionCard({ data }: SubscriptionProps) {
                 )}
               </View>
               <Text style={styles.subMeta}>
-                {sub.frequency} · Next: {sub.nextRenewalAt ? new Date(sub.nextRenewalAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' }) : 'Soon'}
+                {sub.frequency || 'monthly'} · Next: {formatRenewalDate(sub.nextRenewalAt)}
               </Text>
             </View>
 
             <View style={{ alignItems: 'flex-end' }}>
-              <Text style={styles.subAmt}>₹{sub.amountINR.toLocaleString('en-IN')}</Text>
+              <Text style={styles.subAmt}>₹{formatNumberINR(sub.amountINR)}</Text>
               {sub.cancellationUrl && (
                 <TouchableOpacity
                   onPress={() => Linking.openURL(sub.cancellationUrl).catch(() => {})}

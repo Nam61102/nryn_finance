@@ -4,7 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { api } from '../../services/api';
 import { useTheme, makeStyles, Theme } from '../../theme';
 import { formatINR } from '../../utils/format';
-import { PressableScale } from '../../components/ui';
+import PressableScale from '../../components/ui/PressableScale';
 import { CategoriesSkeleton } from '../../components/skeletons';
 
 export default function Categories() {
@@ -39,7 +39,7 @@ export default function Categories() {
 
       {data?.categories?.map((c: any) => (
         <PressableScale
-          key={c.category}
+          key={c?.category || Math.random().toString()}
           style={styles.row}
           onPress={() => router.push(`/transactions?category=${c.category}&month=${data?.period?.month}`)}
           hapticType="light"

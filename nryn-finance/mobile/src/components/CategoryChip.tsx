@@ -1,9 +1,9 @@
 import React from 'react';
 import { Text, View, StyleSheet } from 'react-native';
-import Svg, { Circle } from 'react-native-svg';
+import Svg, { Circle, G } from 'react-native-svg';
 import { useTheme, makeStyles, Theme } from '../theme';
 import { formatINR } from '../utils/format';
-import { PressableScale } from './ui';
+import PressableScale from './ui/PressableScale';
 
 type Chip = {
   category: string;
@@ -25,7 +25,11 @@ export default function CategoryChip({ chip, onPress }: { chip: Chip; onPress?: 
   const stroke = 4;
   const r = (size - stroke) / 2;
   const c = 2 * Math.PI * r;
-  const progressColor = chip.over ? theme.danger : chip.color || theme.accent;
+  const progressColor = chip?.over ? theme.danger : chip?.color || theme.accent;
+
+  const rawRatio = Number(chip?.ratio);
+  const safeRatio = Number.isFinite(rawRatio) ? Math.max(0, Math.min(1, rawRatio)) : 0;
+  const safeOffset = c * (1 - safeRatio);
 
   return (
     <PressableScale
@@ -33,37 +37,39 @@ export default function CategoryChip({ chip, onPress }: { chip: Chip; onPress?: 
       hapticType="light"
       style={styles.wrap}
     >
-      <Text style={styles.label} numberOfLines={1}>{chip.label}</Text>
+      <Text style={styles.label} numberOfLines={1}>{chip?.label || 'Category'}</Text>
       <View style={{ width: size, height: size, marginVertical: 6 }}>
-        <Svg width={size} height={size} style={{ transform: [{ rotate: '-90deg' }] }}>
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            stroke={theme.cardAlt}
-            strokeWidth={stroke}
-            fill="none"
-          />
-          <Circle
-            cx={size / 2}
-            cy={size / 2}
-            r={r}
-            stroke={progressColor}
-            strokeWidth={stroke}
-            fill="none"
-            strokeLinecap="round"
-            strokeDasharray={c}
-            strokeDashoffset={c * (1 - Math.min(1, chip.ratio || 0))}
-          />
+        <Svg width={size} height={size}>
+          <G rotation={-90} originX={size / 2} originY={size / 2}>
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              stroke={theme.cardAlt}
+              strokeWidth={stroke}
+              fill="none"
+            />
+            <Circle
+              cx={size / 2}
+              cy={size / 2}
+              r={r}
+              stroke={progressColor}
+              strokeWidth={stroke}
+              fill="none"
+              strokeLinecap="round"
+              strokeDasharray={c}
+              strokeDashoffset={safeOffset}
+            />
+          </G>
         </Svg>
         <View style={styles.iconWrap}>
-          <Text style={{ fontSize: 18 }}>{chip.icon || '📦'}</Text>
+          <Text style={{ fontSize: 18 }}>{chip?.icon || '📦'}</Text>
         </View>
       </View>
-      <Text style={[styles.amount, chip.over && { color: theme.danger }]}>
-        {formatINR(Math.abs(chip.remaining))}
+      <Text style={[styles.amount, chip?.over && { color: theme.danger }]}>
+        {formatINR(Math.abs(chip?.remaining || 0))}
       </Text>
-      <Text style={styles.sub}>{chip.over ? 'Over' : 'Remaining'}</Text>
+      <Text style={styles.sub}>{chip?.over ? 'Over' : 'Remaining'}</Text>
     </PressableScale>
   );
 }
