@@ -76,6 +76,9 @@ app.use((err, req, res, _next) => {
 async function main() {
   await connect();
 
+  // Remove fake data left behind by the old 'Load Sample Data' button.
+  require('./src/db/cleanupDemo').cleanupDemoData().catch((e) => console.warn('  cleanup  failed:', e.message));
+
   const server = http.createServer(app);
   const io = attachSocket(server);
   app.set('io', io);

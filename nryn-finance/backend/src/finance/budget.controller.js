@@ -2,6 +2,7 @@
 const Budget = require('../db/models/Budget');
 const Alert = require('../db/models/Alert');
 const { status } = require('./budget.service');
+const { monthSummary } = require('./analytics.service');
 const { resolveMonth } = require('./period');
 const { CATEGORY_KEYS } = require('../shared/categories');
 const N = require('../parse/normalize');
@@ -74,6 +75,56 @@ async function getStatus(req, res) {
   res.json(await status(req.userId, req.query.month));
 }
 
+/**
+ * Budget suggestion from the user's OWN spending (never a made-up default).
+ * Looks at the last 3 completed months that have data; if none, projects the
+ * current month. The user must confirm — nothing is saved here.
+ */
+async function getSuggestion(req, res, next) {
+  try {
+    const months = [];
+    let m = resolveMonth();
+    const current = await monthSummary(req.userId, m.month);
+    for (let i = 0; i < 3; i++) {
+      m = resolveMonth(m.prev);
+      const s = await monthSummary(req.userId, m.month);
+      if ((s.spent || 0) > 0) months.push({ month: m.month, label: m.shortLabel, spent: s.spent, income: s.income || 0 });
+    }
+
+    let avgSpentPaise = 0;
+    let basis = 'none';
+    if (months.length) {
+      avgSpentPaise = Math.round(months.reduce((a, x) => a + x.spent, 0) / months.length);
+      basis = 'history';
+    } else if ((current.spent || 0) > 0) {
+      const p = resolveMonth();
+      avgSpentPaise = Math.round((current.spent / Math.max(1, p.elapsedDays)) * p.totalDays);
+      basis = 'projection';
+    }
+    const avgIncomePaise = months.length ? Math.round(months.reduce((a, x) => a + x.income, 0) / months.length) : 0;
+
+    const round500 = (paise) => Math.max(0, Math.round(paise / 100 / 500) * 500); // rupees
+    const avg = round500(avgSpentPaise);
+    const options = avg > 0
+      ? [
+          { key: 'save10', label: 'Save 10%', amount: round500(avgSpentPaise * 0.9), recommended: true },
+          { key: 'same', label: 'Same as usual', amount: avg },
+          { key: 'save20', label: 'Save 20%', amount: round500(avgSpentPaise * 0.8) },
+        ]
+      : [];
+
+    res.json({
+      basis,
+      monthsUsed: months,
+      avgMonthlySpend: Math.round(avgSpentPaise / 100),
+      avgMonthlyIncome: Math.round(avgIncomePaise / 100),
+      options,
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 async function listAlerts(req, res) {
   const q = { userId: req.userId };
   if (req.query.unread === 'true') q.read = false;
@@ -85,4 +136,4 @@ async function readAlert(req, res) {
   res.json({ ok: true });
 }
 
-module.exports = { listBudgets, upsertBudget, patchBudget, deleteBudget, getStatus, listAlerts, readAlert };
+module.exports = { getSuggestion, listBudgets, upsertBudget, patchBudget, deleteBudget, getStatus, listAlerts, readAlert };

@@ -25,6 +25,7 @@ router.get('/analytics/months', async (req, res) => res.json({ months: await ana
 router.get('/budgets', budget.listBudgets);
 router.post('/budgets', budget.upsertBudget);
 router.get('/budgets/status', budget.getStatus);
+router.get('/budgets/suggestion', budget.getSuggestion);
 router.patch('/budgets/:id', budget.patchBudget);
 router.delete('/budgets/:id', budget.deleteBudget);
 
