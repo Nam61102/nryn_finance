@@ -22,6 +22,7 @@ function RootNavigator() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="login" />
         <Stack.Screen name="onboarding" />
+        <Stack.Screen name="budget-setup" />
         <Stack.Screen name="add" />
         <Stack.Screen name="transactions" />
         <Stack.Screen name="transaction/[id]" />

@@ -141,12 +141,12 @@ export default function Onboarding() {
                 `Scanned ${res.read} messages and successfully imported ${res.kept} bank transaction${res.kept === 1 ? '' : 's'}!`,
                 [
                   {
-                    text: 'Go to Dashboard',
+                    text: 'Next: Set Budget',
                     onPress: () => {
                       try {
-                        router.replace('/(tabs)');
+                        router.replace('/budget-setup' as any);
                       } catch {
-                        router.replace('/');
+                        router.replace('/budget-setup' as any);
                       }
                     },
                   },

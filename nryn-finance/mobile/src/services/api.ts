@@ -57,6 +57,7 @@ export const api = {
   resetData: () => request<{ ok: boolean; deletedTransactions: number; deletedMessages: number; message: string }>('/ingest/reset-data', { method: 'POST', body: '{}' }),
   pasteSms: (text: string, sender?: string) => request<{ ok: boolean; accepted: number; duplicates: number; rejected: number; parsed: any; transactions: any[] }>('/ingest/paste-sms', { method: 'POST', body: JSON.stringify({ text, sender }) }),
 
+  budgetSuggestion: () => request<any>('/budgets/suggestion'),
   budgetStatus: (month?: string) => request<any>(`/budgets/status${month ? `?month=${month}` : ''}`),
   months: () => request<{ months: any[] }>('/analytics/months'),
   transactions: (q: Record<string, string | undefined>) => {
