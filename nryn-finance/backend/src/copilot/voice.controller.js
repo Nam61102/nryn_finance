@@ -7,7 +7,14 @@ const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('audio/') || file.originalname.match(/\.(m4a|wav|mp3|ogg|webm|aac)$/i)) {
+    const isAudio =
+      !file.mimetype ||
+      file.mimetype.startsWith('audio/') ||
+      file.mimetype === 'application/octet-stream' ||
+      file.mimetype === 'video/mp4' ||
+      file.mimetype === 'audio/mp4' ||
+      file.originalname.match(/\.(m4a|wav|mp3|ogg|webm|aac|3gp|mp4)$/i);
+    if (isAudio) {
       cb(null, true);
     } else {
       cb(new Error('Only audio files are permitted for transcription.'));

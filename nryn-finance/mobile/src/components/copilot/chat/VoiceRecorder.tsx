@@ -174,20 +174,28 @@ export default function VoiceRecorder({
 
       const res = await api.transcribeVoice(uri, 'audio/m4a', 'voice_query.m4a');
 
-      if (res && res.ok && res.text) {
+      if (res && res.ok && res.text && res.text.trim()) {
         triggerHaptic('success');
         setStatus('idle');
-        onTranscriptionComplete(res.text, res.language);
+        onTranscriptionComplete(res.text.trim(), res.language);
       } else {
-        throw new Error('Transcription returned no text.');
+        triggerHaptic('warning');
+        setStatus('idle');
+        Alert.alert(
+          'आवाज ऐकू आला नाही (Speech not heard)',
+          'कृपया माइक जवळ धरून स्पष्ट बोला आणि पुन्हा प्रयत्न करा.\n(Please speak clearly near the microphone and try again.)'
+        );
       }
     } catch (err: any) {
       triggerHaptic('error');
       console.warn('Transcription error:', err);
       setStatus('idle');
+      const msg = err?.data?.message || err?.message || '';
       Alert.alert(
         'Speech Recognition',
-        'Could not transcribe your voice audio. Please ensure network is connected and speak clearly.'
+        msg && !msg.includes('ApiError')
+          ? `${msg}\n\nकृपया पुन्हा प्रयत्न करा.`
+          : 'Could not transcribe your voice audio. Please ensure network is connected and speak clearly.'
       );
     }
   };

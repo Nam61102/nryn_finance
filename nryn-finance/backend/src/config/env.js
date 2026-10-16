@@ -53,17 +53,24 @@ const env = {
 env.capabilities = {
   llmFallback: env.llm.enabled && Boolean(env.llm.openrouterKey || env.llm.groqKey || env.llm.openaiKey),
   copilotLlm: env.llm.copilotEnabled && Boolean(env.llm.openrouterKey || env.llm.groqKey || env.llm.openaiKey),
+  stt: Boolean(env.llm.openrouterKey || env.llm.groqKey || env.llm.openaiKey),
   gmail: Boolean(env.google.clientId && env.google.clientSecret),
 };
 
 env.missingFor = (capability) => {
   if (capability === 'llm') {
     if (!env.llm.enabled) return ['LLM_FALLBACK_ENABLED'];
-    return ['OPENROUTER_API_KEY', 'GROQ_API_KEY', 'OPENAI_API_KEY'].filter((k) => !process.env[k]);
+    const hasAny = Boolean(env.llm.openrouterKey || env.llm.groqKey || env.llm.openaiKey);
+    return hasAny ? [] : ['OPENROUTER_API_KEY or GROQ_API_KEY or OPENAI_API_KEY'];
+  }
+  if (capability === 'stt') {
+    const hasAny = Boolean(env.llm.openrouterKey || env.llm.groqKey || env.llm.openaiKey);
+    return hasAny ? [] : ['OPENROUTER_API_KEY or GROQ_API_KEY or OPENAI_API_KEY'];
   }
   if (capability === 'copilotLlm') {
     if (!env.llm.copilotEnabled) return ['COPILOT_LLM_ENABLED'];
-    return ['OPENROUTER_API_KEY', 'GROQ_API_KEY', 'OPENAI_API_KEY'].filter((k) => !process.env[k]);
+    const hasAny = Boolean(env.llm.openrouterKey || env.llm.groqKey || env.llm.openaiKey);
+    return hasAny ? [] : ['OPENROUTER_API_KEY or GROQ_API_KEY or OPENAI_API_KEY'];
   }
   if (capability === 'gmail') {
     return ['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'].filter((k) => !process.env[k]);

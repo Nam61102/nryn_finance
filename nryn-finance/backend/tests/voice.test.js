@@ -94,15 +94,29 @@ test('processChat produces localized replies for Marathi and Hindi queries witho
 });
 
 test('transcribeAudio handles missing STT provider keys gracefully', async () => {
-  const dummyBuffer = Buffer.from('fake-audio-content');
-  // In test environment without valid GROQ_API_KEY, transcribeAudio throws STT_UNAVAILABLE
-  await assert.rejects(
-    async () => {
-      await transcribeAudio(dummyBuffer, 'test.m4a', 'audio/m4a');
-    },
-    (err) => {
-      assert.equal(err.code, 'STT_UNAVAILABLE');
-      return true;
-    }
-  );
+  const env = require('../src/config/env');
+  const origGroq = env.llm.groqKey;
+  const origOpenAI = env.llm.openaiKey;
+  const origOpenRouter = env.llm.openrouterKey;
+
+  env.llm.groqKey = '';
+  env.llm.openaiKey = '';
+  env.llm.openrouterKey = '';
+
+  try {
+    const dummyBuffer = Buffer.alloc(1024);
+    await assert.rejects(
+      async () => {
+        await transcribeAudio(dummyBuffer, 'test.m4a', 'audio/m4a');
+      },
+      (err) => {
+        assert.equal(err.code, 'STT_UNAVAILABLE');
+        return true;
+      }
+    );
+  } finally {
+    env.llm.groqKey = origGroq;
+    env.llm.openaiKey = origOpenAI;
+    env.llm.openrouterKey = origOpenRouter;
+  }
 });
