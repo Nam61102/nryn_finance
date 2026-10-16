@@ -9,6 +9,7 @@ import {
   Platform,
   Animated,
   TouchableOpacity,
+  Linking,
 } from 'react-native';
 import { Mic, Square, X } from 'lucide-react-native';
 import { Audio } from 'expo-av';
@@ -93,11 +94,27 @@ export default function VoiceRecorder({
 
     try {
       triggerHaptic('medium');
-      const perm = await Audio.requestPermissionsAsync();
+      let perm = await Audio.getPermissionsAsync();
+      if (!perm.granted) {
+        perm = await Audio.requestPermissionsAsync();
+      }
+
       if (!perm.granted) {
         Alert.alert(
           'Microphone Permission Required',
-          'Please allow microphone access to ask questions in Marathi, Hindi, or English.'
+          'Please allow microphone access in App Settings to ask questions in Marathi, Hindi, or English.',
+          [
+            {
+              text: 'Open Settings',
+              onPress: () => {
+                Linking.openSettings().catch(() => {});
+              },
+            },
+            {
+              text: 'Cancel',
+              style: 'cancel',
+            },
+          ]
         );
         return;
       }

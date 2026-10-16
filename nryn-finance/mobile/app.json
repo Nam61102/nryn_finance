@@ -16,18 +16,39 @@
         "READ_SMS",
         "RECEIVE_SMS",
         "VIBRATE",
-        "INTERNET"
+        "INTERNET",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "CAMERA"
       ]
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "in.kindersports.nrynfinance"
+      "bundleIdentifier": "in.kindersports.nrynfinance",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Allow NRYN AI to access your microphone to ask voice questions in Marathi, Hindi, and English.",
+        "NSCameraUsageDescription": "Allow NRYN AI to photograph bank statements and passbooks.",
+        "NSPhotoLibraryUsageDescription": "Allow NRYN AI to upload statement photos."
+      }
     },
     "plugins": [
       "expo-router",
       "expo-dev-client",
       "expo-secure-store",
-      "expo-task-manager"
+      "expo-task-manager",
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Allow NRYN AI to access your microphone to ask voice questions in Marathi, Hindi, and English."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow NRYN AI to access photos to upload passbook and statement pictures.",
+          "cameraPermission": "Allow NRYN AI to take photos of bank statements and insurance policies."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

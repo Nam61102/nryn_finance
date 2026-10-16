@@ -40,4 +40,10 @@ router.get('/tax-radar', copilot.getTaxRadar);
 // 7. Dynamic AI Merchant & Overspending Recommendations
 router.get('/recommendations', copilot.getRecommendations);
 
+// 8. AI Agent Live Financial Briefing & Status Pill
+router.get('/briefing', copilot.getAgentBriefing);
+
+// 9. Autonomous Pre-Purchase Simulation ("Can I Afford This?")
+router.post('/simulate-purchase', copilot.simulatePurchase);
+
 module.exports = router;

@@ -52,6 +52,7 @@ export const api = {
 
   login: (email: string, password: string) => request<{ token: string; user: any }>('/auth/login', { method: 'POST', body: JSON.stringify({ email, password }) }),
   register: (email: string, password: string, name?: string) => request<{ token: string; user: any }>('/auth/register', { method: 'POST', body: JSON.stringify({ email, password, name }) }),
+  me: () => request<{ user: any }>('/auth/me'),
   resetPassword: (email: string, newPassword: string) => request<{ ok: boolean; message: string }>('/auth/reset-password', { method: 'POST', body: JSON.stringify({ email, newPassword }) }),
   seedDemo: () => request<{ ok: boolean; queued: number; parsed: any }>('/ingest/seed-demo', { method: 'POST', body: '{}' }),
   resetData: () => request<{ ok: boolean; deletedTransactions: number; deletedMessages: number; message: string }>('/ingest/reset-data', { method: 'POST', body: '{}' }),
@@ -267,6 +268,98 @@ export const api = {
         actionTag: string;
       }[];
     }>(`/copilot/recommendations${month ? `?month=${month}` : ''}`),
+  getAgentBriefing: (month?: string) =>
+    request<{
+      ok: boolean;
+      user: { name: string; greeting: string };
+      statusPill: {
+        state: 'optimal' | 'warning' | 'alert';
+        label: string;
+        healthScore: number;
+        auditedCount: number;
+        anomaliesCount: number;
+        statusMessage: string;
+        lastAuditedAt: string;
+      };
+      briefing: {
+        headline: string;
+        narrative: string;
+        metrics: {
+          totalSpentPaise: number;
+          totalSpentINR: number;
+          safeDailyINR: number;
+          budgetTotalINR: number;
+          budgetRemainingINR: number;
+          auditedTxnsCount: number;
+          activeSubscriptionsCount: number;
+          recurringMonthlyINR: number;
+          velocityPct: number;
+          velocityDirection: 'down' | 'up' | 'flat';
+          daysRemaining: number;
+        };
+        highlights: { id: string; label: string; value: string; subtext: string }[];
+        quickPrompts: string[];
+      };
+    }>(`/copilot/briefing${month ? `?month=${month}` : ''}`),
+  simulatePurchase: (params: {
+    amount: number;
+    category?: string;
+    item?: string;
+    month?: string;
+  }) =>
+    request<{
+      ok: boolean;
+      purchase: {
+        item: string;
+        category: string;
+        amountINR: number;
+        amountPaise: number;
+      };
+      verdict: {
+        status: 'SAFE' | 'CAUTION' | 'DEFICIT_RISK';
+        badge: string;
+        badgeColor: string;
+        title: string;
+        summary: string;
+        recommendation: string;
+        isAffordable: boolean;
+      };
+      metrics: {
+        daysRemaining: number;
+        hasConfiguredBudget: boolean;
+        totalBudgetINR: number;
+        current: {
+          spentINR: number;
+          remainingBudgetINR: number;
+          dailySafeINR: number;
+          budgetUsagePercent: number;
+        };
+        projected: {
+          spentINR: number;
+          remainingBudgetINR: number;
+          dailySafeINR: number;
+          budgetUsagePercent: number;
+          dailyDropINR: number;
+          dailyDropPercent: number;
+        };
+        categoryAnalysis: {
+          category: string;
+          currentSpentINR: number;
+          projectedSpentINR: number;
+          categoryBudgetINR: number;
+          isOverbudget: boolean;
+        };
+      };
+      actionPlan: {
+        suggestedDelayDays: number;
+        dailySavingsOffsetINR: number;
+        installment3MoINR: number;
+      };
+      simulatedAt: string;
+    }>('/copilot/simulate-purchase', {
+      method: 'POST',
+      body: JSON.stringify(params),
+    }),
   transcribeVoice: async (
     audioUri: string,
     mimeType: string = 'audio/m4a',

@@ -9,6 +9,15 @@ import PressableScale from '../ui/PressableScale';
 import ChatSheet from './chat/ChatSheet';
 import { ChatMessage } from './chat/MessageBubble';
 
+type CopilotHandler = (prompt?: string) => void;
+let globalOpenCopilot: CopilotHandler | null = null;
+
+export function openCopilot(prompt?: string) {
+  if (globalOpenCopilot) {
+    globalOpenCopilot(prompt);
+  }
+}
+
 export default function CopilotDrawer() {
   const theme = useTheme();
   const [visible, setVisible] = useState(false);
@@ -151,34 +160,31 @@ export default function CopilotDrawer() {
     }
   };
 
-  return (
-    <>
-      {/* Floating Copilot Launcher Orb */}
-      <View style={styles.fabWrap} pointerEvents="box-none">
-        <PressableScale onPress={handleOpen} style={[styles.floatingFab, theme.shadows.glow]}>
-          <LinearGradient
-            colors={['#FF6D00', '#E65100']}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.gradientOrb}
-          >
-            <Sparkles size={20} color="#FFFFFF" />
-            <Text style={styles.fabText}>Copilot</Text>
-          </LinearGradient>
-        </PressableScale>
-      </View>
+  React.useEffect(() => {
+    globalOpenCopilot = (prompt?: string) => {
+      triggerHaptic('medium');
+      setVisible(true);
+      if (prompt && prompt.trim()) {
+        setTimeout(() => {
+          handleSend(prompt);
+        }, 350);
+      }
+    };
+    return () => {
+      globalOpenCopilot = null;
+    };
+  }, [handleSend]);
 
-      {/* Modern Copilot Bottom Sheet */}
-      <ChatSheet
-        visible={visible}
-        onClose={handleClose}
-        messages={messages}
-        busy={busy}
-        onSend={handleSend}
-        onStop={handleStop}
-        suggestions={suggestions}
-      />
-    </>
+  return (
+    <ChatSheet
+      visible={visible}
+      onClose={handleClose}
+      messages={messages}
+      busy={busy}
+      onSend={handleSend}
+      onStop={handleStop}
+      suggestions={suggestions}
+    />
   );
 }
 

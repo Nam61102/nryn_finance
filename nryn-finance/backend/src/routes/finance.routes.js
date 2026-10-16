@@ -34,7 +34,7 @@ const hub = require('../finance/hub.controller');
 
 const docLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 10,
+  max: 60,
   keyGenerator: (req) => (req.userId ? String(req.userId) : req.ip),
   standardHeaders: true,
   legacyHeaders: false,

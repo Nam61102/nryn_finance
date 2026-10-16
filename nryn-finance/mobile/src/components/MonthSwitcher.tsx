@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { ScrollView, Text, TouchableOpacity, StyleSheet, View } from 'react-native';
 import { useTheme, makeStyles, Theme } from '../theme';
 import { haptic } from '../utils/haptics';
@@ -16,10 +16,25 @@ export default function MonthSwitcher({
 }) {
   const theme = useTheme();
   const styles = useStyles();
+  const scrollRef = useRef<ScrollView>(null);
 
   const ordered = (Array.isArray(months) ? [...months] : []).sort((a, b) =>
     String(a?.month || '').localeCompare(String(b?.month || ''))
   );
+
+  // Auto-scroll to selected month on mount or change
+  useEffect(() => {
+    if (!value || ordered.length === 0) return;
+    const activeIdx = ordered.findIndex((m) => m.month === value);
+    if (activeIdx >= 0 && scrollRef.current) {
+      setTimeout(() => {
+        scrollRef.current?.scrollTo({
+          x: Math.max(0, activeIdx * 90 - 40),
+          animated: true,
+        });
+      }, 100);
+    }
+  }, [value, ordered.length]);
 
   const handlePress = (mStr: string) => {
     haptic.light();
@@ -28,6 +43,7 @@ export default function MonthSwitcher({
 
   return (
     <ScrollView
+      ref={scrollRef}
       horizontal
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.wrap}
@@ -39,7 +55,7 @@ export default function MonthSwitcher({
             key={m.month}
             disabled={m.isFuture}
             onPress={() => handlePress(m.month)}
-            activeOpacity={0.8}
+            activeOpacity={0.75}
             style={[
               styles.pill,
               active && styles.pillActive,
@@ -56,11 +72,7 @@ export default function MonthSwitcher({
               {m.shortLabel}
             </Text>
             {m.isCurrent && (
-              <View style={[styles.now, active && styles.nowActive]}>
-                <Text style={[styles.nowText, active && styles.nowTextActive]}>
-                  NOW
-                </Text>
-              </View>
+              <View style={[styles.nowDot, active && styles.nowDotActive]} />
             )}
           </TouchableOpacity>
         );
@@ -71,12 +83,17 @@ export default function MonthSwitcher({
 
 const useStyles = makeStyles((t: Theme) =>
   StyleSheet.create({
-    wrap: { gap: 8, paddingHorizontal: 16, paddingVertical: 8 },
+    wrap: {
+      gap: 8,
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      alignItems: 'center',
+    },
     pill: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: 6,
-      paddingHorizontal: 14,
+      paddingHorizontal: 16,
       paddingVertical: 8,
       borderRadius: 999,
       backgroundColor: t.card,
@@ -87,14 +104,14 @@ const useStyles = makeStyles((t: Theme) =>
     pillActive: {
       backgroundColor: t.accent,
       borderColor: t.accent,
-      ...t.shadows.glow,
+      ...t.shadows.sm,
     },
     pillDisabled: {
       opacity: 0.35,
     },
     text: {
       color: t.textDim,
-      fontSize: 13,
+      fontSize: 12,
       fontWeight: '700',
     },
     textActive: {
@@ -104,22 +121,14 @@ const useStyles = makeStyles((t: Theme) =>
     textDisabled: {
       color: t.textDim,
     },
-    now: {
-      backgroundColor: t.cardAlt,
-      paddingHorizontal: 6,
-      paddingVertical: 2,
-      borderRadius: 6,
+    nowDot: {
+      width: 5,
+      height: 5,
+      borderRadius: 2.5,
+      backgroundColor: t.accent,
     },
-    nowActive: {
-      backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    },
-    nowText: {
-      color: t.accent,
-      fontSize: 9,
-      fontWeight: '800',
-    },
-    nowTextActive: {
-      color: '#FFFFFF',
+    nowDotActive: {
+      backgroundColor: '#FFFFFF',
     },
   })
 );

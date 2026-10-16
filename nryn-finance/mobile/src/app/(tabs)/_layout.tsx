@@ -1,10 +1,11 @@
 import React from 'react';
 import { Tabs, router } from 'expo-router';
 import { View, StyleSheet, TouchableOpacity, Text } from 'react-native';
-import { Home, LayoutGrid, Target, User, Plus } from 'lucide-react-native';
+import { Home, LayoutGrid, Target, User, Plus, Sparkles } from 'lucide-react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTheme } from '../../theme';
 import { haptic } from '../../utils/haptics';
+import { openCopilot } from '../../components/copilot/CopilotDrawer';
 
 export default function TabsLayout() {
   const theme = useTheme();
@@ -96,13 +97,20 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="profile"
         options={{
-          title: 'Profile',
+          title: 'Ask AI',
           tabBarIcon: ({ color, focused }) => (
             <View style={styles.iconWrap}>
-              <User size={22} color={color} strokeWidth={focused ? 2.5 : 2} />
+              <Sparkles size={22} color={color} strokeWidth={focused ? 2.5 : 2} />
               {focused && <View style={[styles.activeDot, { backgroundColor: theme.accent }]} />}
             </View>
           ),
+        }}
+        listeners={{
+          tabPress: (e) => {
+            e.preventDefault();
+            haptic.medium();
+            openCopilot();
+          },
         }}
       />
     </Tabs>

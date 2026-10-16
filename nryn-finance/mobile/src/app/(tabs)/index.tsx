@@ -11,11 +11,12 @@ import PaceBanner from '../../components/PaceBanner';
 import ExpensesCircularGraph from '../../components/ExpensesCircularGraph';
 import AnomalyAlertBanner from '../../components/copilot/AnomalyAlertBanner';
 import SubscriptionCard from '../../components/copilot/SubscriptionCard';
-import CopilotDrawer from '../../components/copilot/CopilotDrawer';
+import CopilotDrawer, { openCopilot } from '../../components/copilot/CopilotDrawer';
 import AiRecommendationsCard from '../../components/copilot/AiRecommendationsCard';
 import HomeHeader from '../../components/home/HomeHeader';
-import HomeHeroCard from '../../components/home/HomeHeroCard';
+import AiAgentBriefingCard from '../../components/home/AiAgentBriefingCard';
 import MonthComparisonRow from '../../components/home/MonthComparisonRow';
+import PrePurchaseSimulatorCard from '../../components/copilot/PrePurchaseSimulatorCard';
 import SectionHeader from '../../components/ui/SectionHeader';
 import EmptyState from '../../components/ui/EmptyState';
 import ErrorBoundary from '../../components/ui/ErrorBoundary';
@@ -28,6 +29,7 @@ export default function Home() {
 
   const [months, setMonths] = useState<any[]>([]);
   const [month, setMonth] = useState<string>('');
+  const [userName, setUserName] = useState<string>('');
   const [status, setStatus] = useState<any>(null);
   const [txns, setTxns] = useState<any[]>([]);
   const [sort, setSort] = useState('date_desc');
@@ -35,6 +37,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
 
   // Copilot Live State
+  const [agentBriefing, setAgentBriefing] = useState<any>(null);
   const [safeSpend, setSafeSpend] = useState<any>(null);
   const [anomalies, setAnomalies] = useState<any[]>([]);
   const [subs, setSubs] = useState<any>(null);
@@ -45,7 +48,7 @@ export default function Home() {
   const load = useCallback(
     async (m?: string) => {
       try {
-        const [mo, st, tx, ss, an, sb, rec] = await Promise.all([
+        const [mo, st, tx, ss, an, sb, rec, me, ab] = await Promise.all([
           api.months().catch(() => ({ months: [] })),
           api.budgetStatus(m).catch(() => null),
           api.transactions({ month: m, sort, limit: '30' }).catch(() => ({ transactions: [] })),
@@ -53,6 +56,8 @@ export default function Home() {
           api.getAnomalies().catch(() => ({ anomalies: [] })),
           api.getSubscriptions().catch(() => null),
           api.getRecommendations(m).catch(() => null),
+          api.me().catch(() => null),
+          api.getAgentBriefing(m).catch(() => null),
         ]);
         if (mo?.months && Array.isArray(mo.months)) setMonths(mo.months);
         if (st) {
@@ -64,6 +69,11 @@ export default function Home() {
         if (an?.anomalies && Array.isArray(an.anomalies)) setAnomalies(an.anomalies);
         if (sb?.ok) setSubs(sb);
         if (rec?.ok) setRecommendations(rec);
+        if (ab?.ok) setAgentBriefing(ab);
+        if (me?.user?.name) {
+          const firstName = me.user.name.trim().split(' ')[0];
+          setUserName(firstName);
+        }
       } catch (e: any) {
         console.warn('Dashboard load error:', e);
       } finally {
@@ -149,17 +159,21 @@ export default function Home() {
         >
           {/* 1. Header (Greeting, Avatar, Review Count) */}
           <HomeHeader
-            userName="there"
+            userName={userName || 'there'}
             needsReviewCount={status?.needsReview || 0}
             refreshing={refreshing}
             onRefresh={onRefresh}
           />
 
-          {/* 2. HERO CARD (Focal visual anchor) */}
-          <HomeHeroCard safeSpend={safeSpend} />
+          {/* 2. AI AGENT LIVE FINANCIAL BRIEFING */}
+          <AiAgentBriefingCard briefingData={agentBriefing} onOpenCopilot={openCopilot} />
+
 
           {/* 3. Anomaly Alert Banner (Dismissible, only if anomalies exist) */}
           <AnomalyAlertBanner anomalies={anomalies} />
+
+          {/* 4. Autonomous Pre-Purchase Simulator ("Can I Afford This?") */}
+          <PrePurchaseSimulatorCard onOpenCopilot={openCopilot} />
 
           {/* 4. Month Switcher + This vs Last Month Stats */}
           <MonthComparisonRow
@@ -197,7 +211,7 @@ export default function Home() {
 
           {/* 7. AI Insights Card (Recommendations: Top 1-2 items) */}
           <View style={styles.sectionWrap}>
-            <AiRecommendationsCard data={recommendations} maxInitial={2} />
+            <AiRecommendationsCard data={recommendations} maxInitial={2} onAskCopilot={openCopilot} />
           </View>
 
           {/* 8. Expenses Circular Donut Graph (4 sort slices with sweep-in) */}

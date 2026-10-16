@@ -6,6 +6,8 @@ const { detectSubscriptions } = require('./subscription.service');
 const { calculateLoanPrepayment } = require('./loan.service');
 const { calculateTaxRadar } = require('./tax.service');
 const { generateRecommendations } = require('./recommendations.service');
+const { generateAgentBriefing } = require('./agentBriefing.service');
+const { simulatePurchase } = require('./purchaseSimulation.service');
 
 // ── 1. Conversational Chat ──
 exports.chat = async (req, res, next) => {
@@ -122,4 +124,30 @@ exports.getRecommendations = async (req, res, next) => {
     next(err);
   }
 };
+
+// ── 8. AI Agent Live Financial Briefing & Status Pill ──
+exports.getAgentBriefing = async (req, res, next) => {
+  try {
+    const month = req.query.month;
+    const result = await generateAgentBriefing(req.userId, month);
+    return res.json(result);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ── 9. Autonomous Pre-Purchase Simulation ("Can I Afford This?") ──
+exports.simulatePurchase = async (req, res, next) => {
+  try {
+    const { amount, category, item, month } = req.body;
+    const result = await simulatePurchase(req.userId, { amount, category, item, month });
+    return res.json(result);
+  } catch (err) {
+    if (err.status) {
+      return res.status(err.status).json({ error: err.code || 'invalid_request', message: err.message });
+    }
+    next(err);
+  }
+};
+
 

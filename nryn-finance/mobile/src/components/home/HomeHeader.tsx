@@ -1,7 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
-import { AlertCircle, RefreshCw } from 'lucide-react-native';
+import { RefreshCw, ShieldCheck } from 'lucide-react-native';
 import { useTheme, makeStyles, Theme } from '../../theme';
 import { haptic } from '../../utils/haptics';
 
@@ -18,74 +18,60 @@ export default function HomeHeader({
   refreshing = false,
   onRefresh,
 }: HomeHeaderProps) {
-  const theme = useTheme();
   const styles = useStyles();
 
-  // Compute IST greeting
-  const getISTGreeting = () => {
-    // Current IST hours
-    const now = new Date();
-    const utcHours = now.getUTCHours();
-    const utcMinutes = now.getUTCMinutes();
-    const istMinutes = utcHours * 60 + utcMinutes + 330; // +5:30
-    const istHours = Math.floor((istMinutes % 1440) / 60);
-
-    if (istHours >= 4 && istHours < 12) return 'Good morning';
-    if (istHours >= 12 && istHours < 17) return 'Good afternoon';
-    if (istHours >= 17 && istHours < 22) return 'Good evening';
-    return 'Good night';
-  };
-
-  const greeting = getISTGreeting();
-  const initial = (userName.trim()[0] || 'N').toUpperCase();
-
-  const handleReviewPress = () => {
-    haptic.light();
-    router.push('/transactions?needsReview=true');
-  };
+  const displayName = userName === 'there' || !userName ? 'Namrata Kadam' : userName;
+  const parts = displayName.trim().split(/\s+/);
+  const initials = parts.length >= 2
+    ? `${parts[0][0]}${parts[1][0]}`.toUpperCase()
+    : (displayName.length >= 2 ? displayName.slice(0, 2).toUpperCase() : 'NK');
 
   return (
     <View style={styles.header}>
-      <View style={styles.left}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{initial}</Text>
+      {/* 1. Sleek Brand & Autonomous Agent Indicator */}
+      <View style={styles.brandWrap}>
+        <View style={styles.titleRow}>
+          <Text style={styles.brandTitle}>NRYN</Text>
+          <Text style={styles.brandAccent}>AI</Text>
         </View>
-        <View>
-          <Text style={styles.greeting}>{greeting},</Text>
-          <Text style={styles.name}>{userName}</Text>
+        <View style={styles.liveIndicator}>
+          <View style={styles.pulseDot} />
+          <Text style={styles.liveText}>AUTONOMOUS COPILOT</Text>
         </View>
       </View>
 
+      {/* 2. Proper Header Right Actions (Sync Button & Profile Avatar) */}
       <View style={styles.right}>
-        {refreshing ? (
-          <View style={styles.refreshPill}>
-            <ActivityIndicator size="small" color={theme.accent} />
-            <Text style={styles.refreshPillText}>Updating…</Text>
-          </View>
-        ) : onRefresh ? (
+        {onRefresh && (
           <TouchableOpacity
             style={styles.refreshBtn}
             onPress={() => {
               haptic.light();
               onRefresh();
             }}
+            disabled={refreshing}
             activeOpacity={0.7}
-            accessibilityLabel="Refresh"
+            accessibilityLabel="Refresh and sync transactions"
           >
-            <RefreshCw size={16} color={theme.textDim} />
-          </TouchableOpacity>
-        ) : null}
-
-        {needsReviewCount > 0 && (
-          <TouchableOpacity
-            onPress={handleReviewPress}
-            style={styles.reviewBadge}
-            activeOpacity={0.8}
-          >
-            <AlertCircle size={14} color={theme.warn} />
-            <Text style={styles.reviewBadgeText}>{needsReviewCount} to review</Text>
+            {refreshing ? (
+              <ActivityIndicator size="small" color="#FF6D00" />
+            ) : (
+              <RefreshCw size={16} color="#FF6D00" />
+            )}
           </TouchableOpacity>
         )}
+
+        {/* Profile Avatar */}
+        <TouchableOpacity
+          style={styles.avatarBtn}
+          onPress={() => {
+            haptic.light();
+            router.push('/(tabs)/profile');
+          }}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.avatarText}>{initials}</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -98,85 +84,86 @@ const useStyles = makeStyles((t: Theme) =>
       alignItems: 'center',
       justifyContent: 'space-between',
       paddingHorizontal: 16,
-      paddingTop: 52,
-      paddingBottom: 14,
+      paddingTop: 50,
+      paddingBottom: 12,
+      backgroundColor: 'transparent',
     },
-    left: {
+    brandWrap: {
+      gap: 2,
+    },
+    titleRow: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 12,
+      gap: 4,
     },
-    avatar: {
-      width: 42,
-      height: 42,
-      borderRadius: 21,
-      backgroundColor: t.accent,
+    brandTitle: {
+      fontSize: 22,
+      fontWeight: '900',
+      color: '#0F172A',
+      letterSpacing: -0.5,
+    },
+    brandAccent: {
+      fontSize: 22,
+      fontWeight: '900',
+      color: '#FF6D00',
+      letterSpacing: -0.5,
+    },
+    liveIndicator: {
+      flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'center',
-      ...t.shadows.glow,
+      gap: 5,
     },
-    avatarText: {
-      color: '#FFFFFF',
-      fontSize: 18,
+    pulseDot: {
+      width: 6,
+      height: 6,
+      borderRadius: 3,
+      backgroundColor: '#FF6D00',
+    },
+    liveText: {
+      fontSize: 9.5,
       fontWeight: '800',
-    },
-    greeting: {
-      color: t.textDim,
-      fontSize: 12,
-      fontWeight: '600',
-    },
-    name: {
-      color: t.text,
-      fontSize: 18,
-      fontWeight: '800',
-      letterSpacing: -0.3,
+      color: '#FF6D00',
+      letterSpacing: 0.8,
     },
     right: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 8,
+      gap: 10,
     },
     refreshBtn: {
-      width: 36,
-      height: 36,
-      borderRadius: 18,
-      backgroundColor: t.cardAlt,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: '#FFFFFF',
       borderWidth: 1,
-      borderColor: t.border,
+      borderColor: '#F1F5F9',
       alignItems: 'center',
       justifyContent: 'center',
+      shadowColor: '#0F172A',
+      shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: 0.04,
+      shadowRadius: 4,
+      elevation: 2,
     },
-    refreshPill: {
-      flexDirection: 'row',
+    avatarBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: '#FFF7ED',
+      borderWidth: 1.5,
+      borderColor: '#FFD7B2',
       alignItems: 'center',
-      gap: 6,
-      backgroundColor: t.accentLight,
-      paddingHorizontal: 10,
-      paddingVertical: 5,
-      borderRadius: 999,
-      borderWidth: 1,
-      borderColor: t.accentBorder,
+      justifyContent: 'center',
+      shadowColor: '#FF6D00',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 2,
     },
-    refreshPillText: {
-      color: t.accent,
-      fontSize: 11,
-      fontWeight: '700',
-    },
-    reviewBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 5,
-      backgroundColor: t.warnLight,
-      borderColor: t.warnBorder,
-      borderWidth: 1,
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 999,
-    },
-    reviewBadgeText: {
-      color: t.warn,
-      fontSize: 11,
-      fontWeight: '800',
+    avatarText: {
+      color: '#FF6D00',
+      fontSize: 16,
+      fontWeight: '900',
     },
   })
 );

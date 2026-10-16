@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, ActivityIndicator, TextInput, Platform } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { Sun, Moon, Smartphone, RefreshCw, LogOut, CheckCircle2, Trash2, FileText, ChevronDown, ChevronUp } from 'lucide-react-native';
+import { Sun, Moon, Smartphone, RefreshCw, LogOut, CheckCircle2, Trash2, FileText, ChevronDown, ChevronUp, ArrowLeft } from 'lucide-react-native';
 import { api, clearToken, API_BASE } from '../../services/api';
 import { deleteItem } from '../../services/storage';
 import { syncSms, getDeviceId } from '../../sync/sms.sync';
@@ -119,7 +119,16 @@ export default function Profile() {
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      <Text style={styles.h1}>Profile & Settings</Text>
+      <View style={styles.topNav}>
+        <TouchableOpacity
+          style={styles.backBtn}
+          onPress={() => router.back()}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+        >
+          <ArrowLeft size={22} color={theme.text} />
+        </TouchableOpacity>
+        <Text style={styles.h1}>Profile & Settings</Text>
+      </View>
 
       {/* Appearance Card */}
       <View style={styles.card}>
@@ -306,7 +315,23 @@ const useStyles = makeStyles((t: Theme) =>
   StyleSheet.create({
     container: { flex: 1, backgroundColor: t.bg },
     content: { padding: 16, paddingTop: 56, paddingBottom: 40 },
-    h1: { color: t.text, fontSize: 24, fontWeight: '800', marginBottom: 18 },
+    topNav: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      marginBottom: 18,
+    },
+    backBtn: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: t.card,
+      borderWidth: 1,
+      borderColor: t.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    h1: { color: t.text, fontSize: 24, fontWeight: '800' },
     card: {
       backgroundColor: t.card,
       borderRadius: t.radius.md,
