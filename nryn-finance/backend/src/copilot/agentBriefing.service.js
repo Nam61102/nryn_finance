@@ -65,11 +65,19 @@ async function generateAgentBriefing(userId, monthStr) {
   }
 
   // 4. Resolve Budget Status
+  // 4. Resolve Budget Status
   let budgetPaise = 0;
+  let customDailyPaise = 0;
+  let hasBudget = false;
   try {
     const resolved = await resolveBudgets(userId, p.month);
     if (resolved?.total?.amount > 0) {
       budgetPaise = resolved.total.amount;
+      hasBudget = true;
+    }
+    if (resolved?.daily?.amount > 0) {
+      customDailyPaise = resolved.daily.amount;
+      hasBudget = true;
     }
   } catch {
     // no budget
@@ -78,7 +86,8 @@ async function generateAgentBriefing(userId, monthStr) {
   const currentDay = p.isCurrent ? now.day : p.totalDays;
   const daysRemaining = p.isCurrent ? Math.max(1, p.totalDays - currentDay + 1) : 1;
   const remainingBudgetPaise = Math.max(0, budgetPaise - totalSpentPaise);
-  const safeDailyPaise = budgetPaise > 0 ? Math.floor(remainingBudgetPaise / daysRemaining) : 0;
+  const calculatedDailyPaise = budgetPaise > 0 ? Math.floor(remainingBudgetPaise / daysRemaining) : 0;
+  const safeDailyPaise = customDailyPaise > 0 ? customDailyPaise : calculatedDailyPaise;
 
   // 5. Detect Anomalies & Subscriptions
   const [anomalyResult, subResult] = await Promise.all([
@@ -109,14 +118,20 @@ async function generateAgentBriefing(userId, monthStr) {
 
   // 7. Craft Natural AI Agent Narrative
   let narrative = '';
-  if (txnsCount === 0) {
-    narrative = `I have audited your accounts for ${p.label || 'this month'}. No expenses recorded yet. Your financial baseline is clear and ready.`;
+  if (!hasBudget) {
+    if (txnsCount === 0) {
+      narrative = `I have audited your accounts for ${p.label || 'this month'}. No transactions recorded yet. Please configure your monthly and daily budget to activate automated pacing.`;
+    } else {
+      narrative = `I have audited ${txnsCount} transactions for ${p.label || 'this month'}. Please set your monthly & daily budget to activate daily allowance tracking and alerts.`;
+    }
+  } else if (txnsCount === 0) {
+    narrative = `I have audited your accounts for ${p.label || 'this month'}. No expenses recorded yet. Your daily safe limit is ₹${Math.round(safeDailyPaise / 100).toLocaleString('en-IN')}/day.`;
   } else if (isSaved && velocityPct > 0) {
-    narrative = `I've audited all ${txnsCount} transactions for ${p.label || 'this month'}. Your spending pace is ${velocityPct}% lower than last month, building a strong financial buffer.`;
+    narrative = `I've audited all ${txnsCount} transactions for ${p.label || 'this month'}. Your spending pace is ${velocityPct}% lower than last month, maintaining ₹${Math.round(safeDailyPaise / 100).toLocaleString('en-IN')}/day.`;
   } else if (isMore && velocityPct > 0) {
-    narrative = `I've audited ${txnsCount} transactions. Spending velocity is ${velocityPct}% ahead of last month. I recommend reserving funds for essential categories.`;
+    narrative = `I've audited ${txnsCount} transactions. Spending velocity is ${velocityPct}% ahead of last month. Safe daily pace is ₹${Math.round(safeDailyPaise / 100).toLocaleString('en-IN')}/day.`;
   } else {
-    narrative = `I have audited ${txnsCount} transactions for ${p.label || 'this month'}. Cashflow velocity is steady with no suspicious activity detected.`;
+    narrative = `I have audited ${txnsCount} transactions for ${p.label || 'this month'}. Safe daily pace is ₹${Math.round(safeDailyPaise / 100).toLocaleString('en-IN')}/day with steady cashflow.`;
   }
 
   if (anomaliesList.length > 0) {
@@ -148,9 +163,11 @@ async function generateAgentBriefing(userId, monthStr) {
       headline: `${timeGreeting}, ${userName}!`,
       narrative,
       metrics: {
+        hasBudget,
         totalSpentPaise,
         totalSpentINR: Math.round(totalSpentPaise / 100),
         safeDailyINR: Math.round(safeDailyPaise / 100),
+        customDailyINR: Math.round(customDailyPaise / 100),
         budgetTotalINR: Math.round(budgetPaise / 100),
         budgetRemainingINR: Math.round(remainingBudgetPaise / 100),
         auditedTxnsCount: txnsCount,
@@ -164,19 +181,19 @@ async function generateAgentBriefing(userId, monthStr) {
         {
           id: 'h1',
           label: 'Spending Velocity',
-          value: isSaved ? `↓ ${velocityPct}% vs Last Mo` : isMore ? `↑ ${velocityPct}% vs Last Mo` : 'Steady',
-          subtext: isSaved ? 'Pacing well below limit' : 'Watch discretionary spend',
+          value: isSaved ? `↓ ${velocityPct}% vs Last Mo` : isMore ? `↑ ${velocityPct}% vs Last Mo` : (prevTotalSpentPaise === 0 && totalSpentPaise > 0 ? `₹${Math.round(totalSpentPaise / 100).toLocaleString('en-IN')}` : 'Steady'),
+          subtext: isSaved ? 'Pacing well below limit' : isMore ? 'Spending ahead of pace' : 'Cashflow steady',
         },
         {
           id: 'h2',
-          label: 'Daily Discretionary',
-          value: safeDailyPaise > 0 ? `₹${Math.round(safeDailyPaise / 100)}/day` : 'Budget not set',
-          subtext: `${daysRemaining} days left in ${p.shortLabel || 'month'}`,
+          label: 'Daily Budget',
+          value: safeDailyPaise > 0 ? `₹${Math.round(safeDailyPaise / 100).toLocaleString('en-IN')}/day` : 'Set Budget',
+          subtext: safeDailyPaise > 0 ? `${daysRemaining} days left in ${p.shortLabel || 'month'}` : 'Tap to configure',
         },
         {
           id: 'h3',
           label: 'Autonomous Audit',
-          value: `${txnsCount} Transactions`,
+          value: `${txnsCount} Txns`,
           subtext: anomaliesList.length === 0 ? '100% verified & clear' : `${anomaliesList.length} flagged`,
         },
       ],

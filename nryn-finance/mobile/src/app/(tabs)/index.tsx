@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, RefreshControl, StyleSheet, Alert } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
-import { Inbox } from 'lucide-react-native';
+import { Inbox, Target, ChevronRight } from 'lucide-react-native';
 import { api } from '../../services/api';
 import { syncSms } from '../../sync/sms.sync';
 import { useTheme, makeStyles, Theme } from '../../theme';
@@ -189,6 +189,34 @@ export default function Home() {
           {/* 5. Pace Banner (if budget exists) */}
           {status?.pace && !noBudget && <PaceBanner pace={status.pace} />}
 
+          {/* 5B. Prompt to configure Monthly & Daily Budget if no budget set */}
+          {noBudget && (
+            <TouchableOpacity
+              style={styles.noBudgetBanner}
+              activeOpacity={0.88}
+              onPress={() => {
+                haptic.light();
+                router.push('/budget-setup' as any);
+              }}
+            >
+              <View style={styles.noBudgetLeft}>
+                <View style={styles.noBudgetIconWrap}>
+                  <Target size={20} color="#FF6D00" />
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.noBudgetTitle}>Set Monthly & Daily Budget</Text>
+                  <Text style={styles.noBudgetSubtitle}>
+                    Configure your monthly ceiling and daily safe allowance to activate AI pacing and alerts.
+                  </Text>
+                </View>
+              </View>
+              <View style={styles.noBudgetBtn}>
+                <Text style={styles.noBudgetBtnText}>Set</Text>
+                <ChevronRight size={14} color="#FFFFFF" />
+              </View>
+            </TouchableOpacity>
+          )}
+
           {/* 6. Category Chips (Horizontal Scroll) */}
           {status?.chips?.length > 0 && (
             <View style={styles.chipsSection}>
@@ -296,6 +324,61 @@ const useStyles = makeStyles((t: Theme) =>
     },
     txnsSection: {
       marginTop: 20,
+    },
+    noBudgetBanner: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      marginHorizontal: 16,
+      marginTop: 6,
+      marginBottom: 10,
+      padding: 14,
+      borderRadius: 18,
+      backgroundColor: '#FFF7ED',
+      borderWidth: 1.5,
+      borderColor: '#FFD7B2',
+    },
+    noBudgetLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 12,
+      flex: 1,
+      marginRight: 8,
+    },
+    noBudgetIconWrap: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      backgroundColor: '#FFFFFF',
+      borderWidth: 1,
+      borderColor: '#FFD7B2',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    noBudgetTitle: {
+      color: '#0F172A',
+      fontSize: 13.5,
+      fontWeight: '800',
+    },
+    noBudgetSubtitle: {
+      color: '#7C2D12',
+      fontSize: 11,
+      lineHeight: 15,
+      marginTop: 2,
+    },
+    noBudgetBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4,
+      backgroundColor: '#FF6D00',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 12,
+    },
+    noBudgetBtnText: {
+      color: '#FFFFFF',
+      fontSize: 12,
+      fontWeight: '800',
     },
   })
 );

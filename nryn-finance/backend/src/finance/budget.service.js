@@ -18,12 +18,13 @@ async function resolveBudgets(userId, month) {
     null;
 
   const total = pick('total');
+  const daily = pick('daily');
   const categories = {};
   for (const r of rows) {
     if (r.scope !== 'category' || !r.category) continue;
     if (!categories[r.category] || r.month === month) categories[r.category] = pick('category', r.category);
   }
-  return { total, categories };
+  return { total, daily, categories };
 }
 
 function paceFor(spent, budget, elapsedDays, totalDays) {
@@ -48,6 +49,7 @@ async function status(userId, monthStr) {
   ]);
 
   const totalBudget = budgets.total?.amount || 0;
+  const dailyBudget = budgets.daily?.amount || 0;
   const spent = summary.spent;
   const remaining = totalBudget - spent;          // TRUE value, may be negative
   const spentByCat = Object.fromEntries(cats.categories.map((c) => [c.category, c.spent]));
@@ -120,6 +122,7 @@ async function status(userId, monthStr) {
       ratio: totalBudget > 0 ? Math.min(spent / totalBudget, 1) : 0,
       over: spent > totalBudget && totalBudget > 0,
     },
+    dailyBudget,
     pace: paceFor(spent, totalBudget, p.elapsedDays, p.totalDays),
     chips,
     unallocated: totalBudget - allocated,           // may be negative; surfaced, not forced to zero

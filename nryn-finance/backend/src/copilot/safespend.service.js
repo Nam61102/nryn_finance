@@ -15,13 +15,18 @@ async function calculateSafeSpend(userId, monthStr) {
   const currentDay = p.isCurrent ? now.day : p.totalDays;
   const daysRemaining = p.isCurrent ? Math.max(1, p.totalDays - currentDay + 1) : 1;
 
-  // 1. Fetch total monthly budget using canonical budget.service resolution
+  // 1. Fetch total monthly and daily budget using canonical budget.service resolution
   let budgetPaise = 0;
+  let customDailyPaise = 0;
   let hasBudget = false;
   try {
     const resolved = await resolveBudgets(userId, p.month);
     if (resolved?.total?.amount > 0) {
       budgetPaise = resolved.total.amount;
+      hasBudget = true;
+    }
+    if (resolved?.daily?.amount > 0) {
+      customDailyPaise = resolved.daily.amount;
       hasBudget = true;
     }
   } catch {
@@ -62,7 +67,8 @@ async function calculateSafeSpend(userId, monthStr) {
 
   // 5. Compute available pool based on actual budget
   const discretionaryPoolPaise = hasBudget ? Math.max(0, budgetPaise - fixedLiabilitiesPaise - totalSpentSoFarPaise) : 0;
-  const dailySafeSpendPaise = hasBudget ? Math.max(0, Math.round(discretionaryPoolPaise / daysRemaining)) : 0;
+  const calculatedDailySafePaise = hasBudget ? Math.max(0, Math.round(discretionaryPoolPaise / daysRemaining)) : 0;
+  const dailySafeSpendPaise = customDailyPaise > 0 ? customDailyPaise : calculatedDailySafePaise;
   const todayRemainingPaise = hasBudget ? Math.max(0, dailySafeSpendPaise - todaySpentPaise) : 0;
 
   // 6. Burn status & Projected Runout Date

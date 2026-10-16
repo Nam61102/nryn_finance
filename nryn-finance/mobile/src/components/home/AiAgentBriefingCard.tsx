@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Sparkles, Bot, ChevronRight } from 'lucide-react-native';
+import { router } from 'expo-router';
 import { makeStyles, Theme } from '../../theme';
 import { haptic } from '../../utils/haptics';
 
@@ -15,13 +16,13 @@ export default function AiAgentBriefingCard({ briefingData, onOpenCopilot }: Age
   const briefing = briefingData?.briefing;
   const metrics = briefing?.metrics;
 
-  const headline = briefing?.headline || 'Good afternoon, Namrata! 👋';
-  const narrative = briefing?.narrative || 'I have audited all 14 bank transactions for October. Your spending pace is 51% slower than September. All accounts verified with 0 anomalous charges.';
+  const headline = briefing?.headline || 'Daily Financial Briefing 👋';
+  const narrative = briefing?.narrative || 'Auditing your accounts and analyzing activity. Set your monthly & daily budget to activate personalized daily spending limits.';
   
   const highlights = briefing?.highlights || [
-    { id: 'h1', label: 'Spending Velocity', value: '↓ 51% Lower', subtext: 'vs Last Mo' },
-    { id: 'h2', label: 'Discretionary Pace', value: '₹505/day', subtext: 'Safe Allowance' },
-    { id: 'h3', label: 'Autonomous Audit', value: '14 Verified', subtext: '0 Anomalies' },
+    { id: 'h1', label: 'Spending Velocity', value: 'Auditing...', subtext: 'Live Calculation' },
+    { id: 'h2', label: 'Daily Budget', value: 'Set Budget', subtext: 'Tap to configure' },
+    { id: 'h3', label: 'Autonomous Audit', value: 'Active', subtext: 'Watchdog Active' },
   ];
 
   const quickPrompts = briefing?.quickPrompts || [
@@ -41,7 +42,7 @@ export default function AiAgentBriefingCard({ briefingData, onOpenCopilot }: Age
             <Text style={styles.briefingTag}>DAILY FINANCIAL BRIEFING</Text>
             <View style={styles.dotSeparator} />
             <Text style={styles.auditStatusTag}>
-              {metrics?.auditedTxnsCount !== undefined ? `${metrics.auditedTxnsCount} AUDITED` : '14 AUDITED'}
+              {metrics?.auditedTxnsCount !== undefined ? `${metrics.auditedTxnsCount} AUDITED` : 'AUDIT WATCH'}
             </Text>
           </View>
           <Text style={styles.headlineText} numberOfLines={1}>
@@ -59,13 +60,43 @@ export default function AiAgentBriefingCard({ briefingData, onOpenCopilot }: Age
 
       {/* 3. WHITE & ORANGE 3-POD INTELLIGENCE HIGHLIGHTS */}
       <View style={styles.highlightsGrid}>
-        {highlights.map((h: any, idx: number) => (
-          <View key={h.id || idx} style={styles.highlightPod}>
-            <Text style={styles.podLabel} numberOfLines={1}>{h.label}</Text>
-            <Text style={styles.podValue} numberOfLines={1}>{h.value}</Text>
-            <Text style={styles.podSubtext} numberOfLines={1}>{h.subtext}</Text>
-          </View>
-        ))}
+        {highlights.map((h: any, idx: number) => {
+          const isBudgetPod = h.id === 'h2' || h.value === 'Set Budget' || (h.label && h.label.toLowerCase().includes('budget'));
+          const isActionable = isBudgetPod && (h.value === 'Set Budget' || !metrics?.hasBudget);
+
+          return (
+            <TouchableOpacity
+              key={h.id || idx}
+              style={[
+                styles.highlightPod,
+                isActionable && styles.highlightPodAlert,
+              ]}
+              activeOpacity={0.8}
+              onPress={() => {
+                haptic.light();
+                if (isBudgetPod) {
+                  router.push('/budget-setup' as any);
+                } else if (h.id === 'h1') {
+                  onOpenCopilot?.('How does my spending velocity compare to last month?');
+                } else {
+                  onOpenCopilot?.('Show audit summary of my transactions');
+                }
+              }}
+            >
+              <Text style={styles.podLabel} numberOfLines={1}>{h.label}</Text>
+              <Text
+                style={[
+                  styles.podValue,
+                  isActionable && styles.podValueAlert,
+                ]}
+                numberOfLines={1}
+              >
+                {h.value}
+              </Text>
+              <Text style={styles.podSubtext} numberOfLines={1}>{h.subtext}</Text>
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
       {/* 4. INTERACTIVE ASK AI ACTION BAR */}
@@ -192,6 +223,11 @@ const useStyles = makeStyles((t: Theme) =>
       shadowRadius: 3,
       elevation: 1,
     },
+    highlightPodAlert: {
+      backgroundColor: '#FFF7ED',
+      borderColor: '#FFD7B2',
+      borderWidth: 1.5,
+    },
     podLabel: {
       color: '#E65100',
       fontSize: 9.5,
@@ -206,6 +242,9 @@ const useStyles = makeStyles((t: Theme) =>
       fontWeight: '900',
       letterSpacing: -0.2,
       marginBottom: 2,
+    },
+    podValueAlert: {
+      color: '#FF6D00',
     },
     podSubtext: {
       color: '#64748B',

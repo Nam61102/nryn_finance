@@ -10,7 +10,7 @@ const { CATEGORY_KEYS } = require('../../shared/categories');
  */
 const BudgetSchema = new Schema({
   userId: { type: Types.ObjectId, ref: 'User', required: true },
-  scope: { type: String, enum: ['total', 'category'], required: true },
+  scope: { type: String, enum: ['total', 'category', 'daily'], required: true },
   category: { type: String, enum: [...CATEGORY_KEYS, null], default: null },
   amount: { type: Number, required: true, min: 0 },   // paise
   period: { type: String, default: 'monthly' },

@@ -25,13 +25,13 @@ async function upsertBudget(req, res, next) {
       return res.status(400).json({ error: 'invalid_category' });
     }
 
-    const targetCategory = scope === 'total' ? null : category;
+    const targetCategory = (scope === 'total' || scope === 'daily') ? null : category;
     const targetMonth = month ? resolveMonth(month).month : null;
 
     const key = { userId: req.userId, scope, category: targetCategory, month: targetMonth };
     const budget = await Budget.findOneAndUpdate(
       key,
-      { $set: { amount: paise, period: 'monthly' } },
+      { $set: { amount: paise, period: scope === 'daily' ? 'daily' : 'monthly' } },
       { upsert: true, new: true }
     );
 

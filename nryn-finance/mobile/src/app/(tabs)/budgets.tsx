@@ -38,7 +38,10 @@ export default function Budgets() {
       ]);
       setStatus(st);
       setCats(c.categories);
-      const d: Record<string, string> = { total: String(Math.round(((st?.ring?.total || 0) / 100))) };
+      const d: Record<string, string> = {
+        total: String(Math.round(((st?.ring?.total || 0) / 100))),
+        daily: st?.dailyBudget ? String(Math.round(st.dailyBudget / 100)) : '',
+      };
       if (Array.isArray(st?.chips)) {
         for (const chip of st.chips) {
           if (chip?.category) {
@@ -63,8 +66,8 @@ export default function Budgets() {
     setRefreshing(false);
   };
 
-  const save = async (scope: 'total' | 'category', category?: string) => {
-    const key = scope === 'total' ? 'total' : category!;
+  const save = async (scope: 'total' | 'category' | 'daily', category?: string) => {
+    const key = scope === 'total' ? 'total' : scope === 'daily' ? 'daily' : category!;
     const rawVal = String(draft[key] || '').replace(/,/g, '').trim();
     if (rawVal === '') {
       return Alert.alert('Invalid Amount', 'Please enter an amount to save.');
@@ -79,12 +82,16 @@ export default function Budgets() {
       haptic.medium();
       await api.post('/budgets', {
         scope,
-        category: scope === 'total' ? null : category,
+        category: (scope === 'total' || scope === 'daily') ? null : category,
         amount: value,
       });
       await load();
       haptic.success();
-      const label = scope === 'total' ? 'Monthly total budget' : (cats.find(c => c.key === category)?.label || category);
+      const label = scope === 'total'
+        ? 'Monthly total budget'
+        : scope === 'daily'
+        ? 'Daily spending cap'
+        : (cats.find(c => c.key === category)?.label || category);
       Alert.alert('✅ Budget Saved', `${label} set to ${formatINR(value)}`);
     } catch (err: any) {
       haptic.error();
@@ -171,6 +178,46 @@ export default function Budgets() {
         </Text>
       </View>
 
+      {/* Daily Safe Allowance Card */}
+      <View style={styles.card}>
+        <View style={styles.cardHeaderRow}>
+          <Text style={styles.rowLabel}>Daily Spending Allowance</Text>
+          <Text style={styles.badgeText}>
+            {draft.daily && Number(draft.daily) > 0
+              ? 'Custom Target'
+              : draft.total && Number(draft.total) > 0
+              ? `Auto: ~${formatINR(Math.round(Number(draft.total) / 30))}/day`
+              : 'Not set'}
+          </Text>
+        </View>
+        <View style={styles.inputRow}>
+          <Text style={styles.rupee}>₹</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="decimal-pad"
+            value={draft.daily ?? ''}
+            onChangeText={(v) => setDraft({ ...draft, daily: v })}
+            placeholderTextColor={theme.textDim}
+            placeholder={draft.total && Number(draft.total) > 0 ? String(Math.round(Number(draft.total) / 30)) : '0'}
+          />
+          <TouchableOpacity
+            style={[styles.saveBtn, savingKey === 'daily' && styles.saveBtnDisabled]}
+            onPress={() => save('daily')}
+            disabled={savingKey !== null}
+            activeOpacity={0.8}
+          >
+            {savingKey === 'daily' ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Text style={styles.saveText}>Save</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+        <Text style={styles.hint}>
+          Powers your AI Copilot daily safe limit and real-time purchase simulation.
+        </Text>
+      </View>
+
       <Text style={styles.sectionTitle}>Category Allocations</Text>
       {cats.filter((c) => !['income', 'transfer'].includes(c.key)).map((c) => (
         <View key={c.key} style={styles.card}>
@@ -254,7 +301,24 @@ const useStyles = makeStyles((t: Theme) =>
       borderColor: t.border,
       ...t.shadows.sm,
     },
-    rowLabel: { color: t.text, fontSize: 14, fontWeight: '700', marginBottom: 10 },
+    cardHeaderRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 10,
+    },
+    rowLabel: { color: t.text, fontSize: 14, fontWeight: '700' },
+    badgeText: {
+      color: t.accent,
+      fontSize: 11,
+      fontWeight: '700',
+      backgroundColor: t.cardAlt,
+      paddingHorizontal: 8,
+      paddingVertical: 3,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: t.border,
+    },
     inputRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
     rupee: { color: t.accent, fontSize: 20, fontWeight: '800' },
     input: {
