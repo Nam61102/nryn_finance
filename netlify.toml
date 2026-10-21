@@ -4,7 +4,7 @@
   publish = "dist"
 
 [build.environment]
-  EXPO_PUBLIC_API_URL = "https://nryn-finance-backend.onrender.com"
+  EXPO_PUBLIC_API_URL = "https://nryn-finance-wqtv.onrender.com"
   EXPO_PUBLIC_BACKFILL_DAYS = "180"
   EXPO_PUBLIC_BATCH_SIZE = "200"
 
