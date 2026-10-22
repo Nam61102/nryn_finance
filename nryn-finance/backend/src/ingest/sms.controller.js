@@ -241,6 +241,18 @@ async function seedDemo(req, res) {
 async function resetData(req, res) {
   try {
     const userId = req.userId;
+    if (!isConnected()) {
+      const before = (store.transactions || []).length;
+      store.transactions = (store.transactions || []).filter((t) => String(t.userId) !== String(userId));
+      save();
+      return res.json({
+        ok: true,
+        deletedTransactions: before - store.transactions.length,
+        deletedMessages: 0,
+        deletedBudgets: 0,
+        message: 'All transactions and SMS data wiped successfully.',
+      });
+    }
     const tx = await Transaction.deleteMany({ userId });
     const raw = await RawMessage.deleteMany({ userId });
     // Remove auto-created budgets and the AI's per-user category guesses so nothing fake survives a reset.
