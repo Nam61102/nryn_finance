@@ -1,4 +1,5 @@
 'use strict';
+const { Types } = require('mongoose');
 const Transaction = require('../db/models/Transaction');
 const Account = require('../db/models/Account');
 const Policy = require('../db/models/Policy');
@@ -15,6 +16,80 @@ const { resolveMonth } = require('../finance/period');
  * NRYN Conversational Financial Copilot Service
  * Uses real user data only. Never fabulates fake numbers, merchants or loans.
  */
+
+async function fetchUserFinancialContext(userId, currentMonth) {
+  const { isConnected } = require('../db/mongo');
+  const { store } = require('../db/fallback.store');
+  const { inferCategory } = require('../shared/categories');
+  const uid = String(userId);
+
+  if (!isConnected()) {
+    const rawTxns = (store.transactions || []).filter((t) => {
+      if (String(t.userId) !== uid || t.deletedAt) return false;
+      const d = new Date(t.occurredAt);
+      return d >= currentMonth.start && d <= currentMonth.end;
+    });
+
+    const txns = rawTxns.map((t) => {
+      let c = t.category;
+      if (!c || c === 'other') c = inferCategory(t.merchantName, t.merchantRaw);
+      return { ...t, category: c };
+    });
+
+    const userBudgets = (store.budgets || []).filter((b) => String(b.userId) === uid);
+    const totalB = userBudgets.find((b) => b.scope === 'total')?.amount || 0;
+    const dailyB = userBudgets.find((b) => b.scope === 'daily')?.amount || 0;
+    const totalBudgetINR = Math.round(totalB / 100);
+    const dailySafeSpendINR = Math.round(dailyB / 100) || Math.round(totalBudgetINR / 30);
+    const debitTxns = txns.filter((t) => t.isExpense && t.direction === 'debit');
+    const totalSpentINR = Math.round(debitTxns.reduce((s, t) => s + (t.amount || 0), 0) / 100);
+    const todayRemainingINR = Math.max(0, dailySafeSpendINR);
+
+    const safeSpend = {
+      ok: true,
+      hasBudget: Boolean(totalB || dailyB),
+      month: currentMonth.month,
+      currentDay: new Date().getDate(),
+      daysRemaining: Math.max(1, currentMonth.totalDays - new Date().getDate()),
+      dailySafeSpendINR,
+      todaySpentINR: 0,
+      todayRemainingINR,
+      totalBudgetINR,
+      totalSpentSoFarINR: totalSpentINR,
+      burnStatus: 'green',
+      projectedRunoutDate: null,
+      insightMessage: 'Safe daily allowance is ₹' + dailySafeSpendINR + '.',
+    };
+
+    const subs = { count: 0, empty: true, subscriptions: [], totalMonthlyRecurringINR: 0 };
+    const taxRadar = { ok: true, empty: true, section80C: {}, section80D: {} };
+    const accounts = [];
+    const policies = [];
+
+    return [txns, safeSpend, subs, taxRadar, accounts, policies];
+  }
+
+  const isObjectId = Types.ObjectId.isValid(userId);
+  const mongoUserId = isObjectId ? new Types.ObjectId(userId) : userId;
+
+  return Promise.all([
+    Transaction.find({
+      userId: mongoUserId,
+      deletedAt: null,
+      occurredAt: { $gte: currentMonth.start, $lte: currentMonth.end },
+    })
+      .sort({ occurredAt: -1 })
+      .limit(100)
+      .lean()
+      .catch(() => []),
+    calculateSafeSpend(userId).catch(() => null),
+    detectSubscriptions(userId).catch(() => null),
+    calculateTaxRadar(userId).catch(() => null),
+    Account.find({ userId: mongoUserId }).lean().catch(() => []),
+    Policy.find({ userId: mongoUserId }).lean().catch(() => []),
+  ]);
+}
+
 async function processChat(userId, message, history = []) {
   const query = (message || '').trim();
   const lower = query.toLowerCase();
@@ -23,21 +98,7 @@ async function processChat(userId, message, history = []) {
   const currentMonth = resolveMonth();
 
   // 1. Fetch user's live financial data
-  const [txns, safeSpend, subs, taxRadar, accounts, policies] = await Promise.all([
-    Transaction.find({
-      userId,
-      deletedAt: null,
-      occurredAt: { $gte: currentMonth.start, $lte: currentMonth.end },
-    })
-      .sort({ occurredAt: -1 })
-      .limit(100)
-      .lean(),
-    calculateSafeSpend(userId).catch(() => null),
-    detectSubscriptions(userId).catch(() => null),
-    calculateTaxRadar(userId).catch(() => null),
-    Account.find({ userId }).lean().catch(() => []),
-    Policy.find({ userId }).lean().catch(() => []),
-  ]);
+  const [txns, safeSpend, subs, taxRadar, accounts, policies] = await fetchUserFinancialContext(userId, currentMonth);
 
   const debitExpenseTxns = txns.filter((t) => t.direction === 'debit' && t.isExpense);
   const totalSpentINR = Math.round(debitExpenseTxns.reduce((sum, t) => sum + (t.amount || 0), 0) / 100);
@@ -531,21 +592,7 @@ async function streamChat(userId, message, history = [], res) {
     const userLang = detectLanguage(query);
 
     // 1. Fetch user's live financial data
-    const [txns, safeSpend, subs, taxRadar, accounts, policies] = await Promise.all([
-      Transaction.find({
-        userId,
-        deletedAt: null,
-        occurredAt: { $gte: currentMonth.start, $lte: currentMonth.end },
-      })
-        .sort({ occurredAt: -1 })
-        .limit(100)
-        .lean(),
-      calculateSafeSpend(userId).catch(() => null),
-      detectSubscriptions(userId).catch(() => null),
-      calculateTaxRadar(userId).catch(() => null),
-      Account.find({ userId }).lean().catch(() => []),
-      Policy.find({ userId }).lean().catch(() => []),
-    ]);
+    const [txns, safeSpend, subs, taxRadar, accounts, policies] = await fetchUserFinancialContext(userId, currentMonth);
 
     const debitExpenseTxns = txns.filter((t) => t.direction === 'debit' && t.isExpense);
     const totalSpentINR = Math.round(debitExpenseTxns.reduce((sum, t) => sum + (t.amount || 0), 0) / 100);

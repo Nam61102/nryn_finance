@@ -43,13 +43,28 @@ async function calculateSafeSpend(userId, monthStr) {
   }
 
   // 3. Fetch all expenses occurred so far this month (IST boundaries, soft deletes excluded)
-  const txns = await Transaction.find({
-    userId,
-    direction: 'debit',
-    isExpense: true,
-    deletedAt: null,
-    occurredAt: { $gte: p.start, $lte: p.end },
-  }).select('amount occurredAt').lean();
+  const { isConnected } = require('../db/mongo');
+  const { store } = require('../db/fallback.store');
+  const { Types } = require('mongoose');
+  const uid = String(userId);
+  let txns = [];
+  if (!isConnected()) {
+    txns = (store.transactions || []).filter((t) => {
+      if (String(t.userId) !== uid || t.deletedAt || !t.isExpense || t.direction !== 'debit') return false;
+      const d = new Date(t.occurredAt);
+      return d >= p.start && d <= p.end;
+    });
+  } else {
+    const isObjectId = Types.ObjectId.isValid(userId);
+    const mongoUserId = isObjectId ? new Types.ObjectId(userId) : userId;
+    txns = await Transaction.find({
+      userId: mongoUserId,
+      direction: 'debit',
+      isExpense: true,
+      deletedAt: null,
+      occurredAt: { $gte: p.start, $lte: p.end },
+    }).select('amount occurredAt').lean().catch(() => []);
+  }
 
   const totalSpentSoFarPaise = txns.reduce((sum, t) => sum + (t.amount || 0), 0);
 

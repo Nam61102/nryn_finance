@@ -11,7 +11,18 @@ const { monthSummary, byCategory } = require('./analytics.service');
  * month without rewriting history.
  */
 async function resolveBudgets(userId, month) {
-  const rows = await Budget.find({ userId, $or: [{ month }, { month: null }] }).lean();
+  const { isConnected } = require('../db/mongo');
+  const { store } = require('../db/fallback.store');
+  const { Types } = require('mongoose');
+  const uid = String(userId);
+  let rows = [];
+  if (!isConnected()) {
+    rows = (store.budgets || []).filter((r) => String(r.userId) === uid && (!r.month || r.month === month));
+  } else {
+    const isObjectId = Types.ObjectId.isValid(userId);
+    const mongoUserId = isObjectId ? new Types.ObjectId(userId) : userId;
+    rows = await Budget.find({ userId: mongoUserId, $or: [{ month }, { month: null }] }).lean().catch(() => []);
+  }
   const pick = (scope, category = null) =>
     rows.find((r) => r.scope === scope && r.category === category && r.month === month) ||
     rows.find((r) => r.scope === scope && r.category === category && r.month === null) ||

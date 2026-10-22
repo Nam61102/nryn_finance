@@ -19,12 +19,27 @@ const SUBSCRIPTION_PATTERNS = [
 async function detectSubscriptions(userId) {
   const ninetyDaysAgo = DateTime.now().setZone(ZONE).minus({ days: 90 }).startOf('day').toJSDate();
 
-  const txns = await Transaction.find({
-    userId,
-    direction: 'debit',
-    deletedAt: null,
-    occurredAt: { $gte: ninetyDaysAgo },
-  }).sort({ occurredAt: -1 }).lean();
+  const { isConnected } = require('../db/mongo');
+  const { store } = require('../db/fallback.store');
+  const { Types } = require('mongoose');
+  const uid = String(userId);
+  let txns = [];
+  if (!isConnected()) {
+    txns = (store.transactions || []).filter((t) => {
+      if (String(t.userId) !== uid || t.deletedAt || t.direction !== 'debit') return false;
+      const d = new Date(t.occurredAt);
+      return d >= ninetyDaysAgo;
+    });
+  } else {
+    const isObjectId = Types.ObjectId.isValid(userId);
+    const mongoUserId = isObjectId ? new Types.ObjectId(userId) : userId;
+    txns = await Transaction.find({
+      userId: mongoUserId,
+      direction: 'debit',
+      deletedAt: null,
+      occurredAt: { $gte: ninetyDaysAgo },
+    }).sort({ occurredAt: -1 }).lean().catch(() => []);
+  }
 
   if (!txns || txns.length === 0) {
     return {
