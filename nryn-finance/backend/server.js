@@ -74,17 +74,9 @@ app.use((err, req, res, _next) => {
 });
 
 async function main() {
-  await connect();
-
-  // Remove fake data left behind by the old 'Load Sample Data' button.
-  require('./src/db/cleanupDemo').cleanupDemoData().catch((e) => console.warn('  cleanup  failed:', e.message));
-
   const server = http.createServer(app);
   const io = attachSocket(server);
   app.set('io', io);
-
-  startParseJob(io);
-  startDigestJob(io);
 
   server.listen(env.port, () => {
     console.log(`\n  NRYN Finance backend`);
@@ -93,6 +85,30 @@ async function main() {
     console.log(`  llm     ${env.capabilities.llmFallback ? 'enabled' : 'DISABLED (regex-only — nothing leaves this machine)'}`);
     console.log(`  gmail   ${env.capabilities.gmail ? 'configured' : 'not configured (phase 2)'}\n`);
   });
+
+  try {
+    await connect();
+    // Remove fake data left behind by the old 'Load Sample Data' button.
+    require('./src/db/cleanupDemo').cleanupDemoData().catch((e) => console.warn('  cleanup  failed:', e.message));
+    startParseJob(io);
+    startDigestJob(io);
+  } catch (err) {
+    console.error('  MongoDB initial connection failed:', err.message);
+    console.log('  Server will stay live on port', env.port, 'and retry connecting in background...');
+    const retryTimer = setInterval(async () => {
+      try {
+        console.log('  Retrying MongoDB connection...');
+        await connect();
+        console.log('  MongoDB reconnected successfully!');
+        clearInterval(retryTimer);
+        require('./src/db/cleanupDemo').cleanupDemoData().catch((e) => console.warn('  cleanup  failed:', e.message));
+        startParseJob(io);
+        startDigestJob(io);
+      } catch (retryErr) {
+        console.error('  MongoDB retry failed:', retryErr.message);
+      }
+    }, 15000);
+  }
 }
 
 main().catch((err) => {
