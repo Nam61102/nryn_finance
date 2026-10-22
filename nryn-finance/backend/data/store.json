@@ -8,7 +8,26 @@
       "createdAt": "2026-10-22T09:37:15.185Z"
     }
   ],
-  "budgets": [],
+  "budgets": [
+    {
+      "_id": "b_1792662698674",
+      "userId": "user_1792661835083_yd16g",
+      "scope": "total",
+      "category": null,
+      "amount": 1000000,
+      "period": "monthly",
+      "month": null
+    },
+    {
+      "_id": "b_1792662698679",
+      "userId": "user_1792661835083_yd16g",
+      "scope": "daily",
+      "category": null,
+      "amount": 15000,
+      "period": "daily",
+      "month": null
+    }
+  ],
   "transactions": [],
   "rawMessages": []
 }

@@ -10,10 +10,10 @@ function requireAuth(req, res, next) {
   if (!token) return res.status(401).json({ error: 'missing_token' });
   try {
     const payload = jwt.verify(token, env.jwtSecret);
-    req.userId = new Types.ObjectId(payload.sub);
+    req.userId = Types.ObjectId.isValid(payload.sub) ? new Types.ObjectId(payload.sub) : String(payload.sub);
     req.user = payload;
     next();
-  } catch {
+  } catch (err) {
     return res.status(401).json({ error: 'invalid_token' });
   }
 }
