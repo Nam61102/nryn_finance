@@ -9,7 +9,7 @@ const { calculateTaxRadar } = require('./tax.service');
 const { calculateLoanPrepayment } = require('./loan.service');
 const { buildBlocks } = require('./blocks.service');
 const { chatMessages, chatStream, isCopilotEnabled } = require('../ai/llm.client');
-const { detectLanguage } = require('../ai/whisper.client');
+const { detectLanguage, normalizeDigits, normalizeTransliteratedEnglish } = require('../ai/whisper.client');
 const { resolveMonth } = require('../finance/period');
 
 /**
@@ -91,9 +91,11 @@ async function fetchUserFinancialContext(userId, currentMonth) {
 }
 
 async function processChat(userId, message, history = []) {
-  const query = (message || '').trim();
-  const lower = query.toLowerCase();
-  const userLang = detectLanguage(query);
+  const rawQuery = (message || '').trim();
+  const translit = normalizeTransliteratedEnglish(rawQuery);
+  const query = translit.isTransliterated ? translit.text : rawQuery;
+  const userLang = translit.isTransliterated ? { code: 'en', name: 'English' } : detectLanguage(query);
+  const lower = normalizeDigits(query).toLowerCase();
 
   const currentMonth = resolveMonth();
 
@@ -203,19 +205,33 @@ Rules:
     ];
 
   // Pattern A: "Can I afford X?" / "परवडेल का" / "खर्च करू शकतो का" / "अफोर्ड कर सकता हूँ"
-  const affordMatch =
-    lower.match(/(?:afford|spend|buy|dinner|party|trip|खर्च|करू|सकतो|सकता|घेऊ|खा|खाना)\s*(?:of|for|चा|चे|का)?\s*(?:rs\.?|inr|₹|रुपये|रु\.?)?\s*([\d,]+)/i) ||
-    lower.match(/([\d,]+)\s*(?:rs\.?|inr|₹|रुपये|रु\.?)?\s*(?:afford|spend|खर्च|परवडेल|करू|सकतो|सकता)/i);
-
-  const isAffordQuery = affordMatch ||
+  const isAffordQuery =
     lower.includes('afford') ||
     lower.includes('परवडेल') ||
+    lower.includes('परवडतील') ||
     lower.includes('खर्च करू') ||
     lower.includes('अफोर्ड') ||
-    lower.includes('कर सकता');
+    lower.includes('कर सकता') ||
+    lower.includes('कर सकती') ||
+    lower.includes('spend') ||
+    lower.includes('buy') ||
+    lower.includes('dinner') ||
+    lower.includes('डिनर') ||
+    lower.includes('जेवण');
+
+  let askAmt = 0;
+  if (isAffordQuery) {
+    const numberMatch = lower.match(/(?:rs\.?|inr|₹|रुपये|रूपीज|रु\.?)?\s*([\d,]+)\s*(?:rs\.?|inr|₹|रुपये|रूपीज|रु\.?|k)?/i);
+    if (numberMatch && numberMatch[1]) {
+      const rawNum = numberMatch[1].replace(/,/g, '');
+      askAmt = parseFloat(rawNum) || 0;
+      if (lower.includes(`${rawNum}k`)) {
+        askAmt *= 1000;
+      }
+    }
+  }
 
   if (isAffordQuery) {
-    const askAmt = affordMatch ? parseFloat(affordMatch[1].replace(/,/g, '')) : 0;
 
     if (!safeSpend?.hasBudget) {
       if (userLang.code === 'mr') {
@@ -457,24 +473,54 @@ Rules:
     lower.includes('टॅक्स') ||
     lower.includes('टैक्स')
   ) {
+    const fyLabel = taxRadar?.financialYearLabel ? ` (${taxRadar.financialYearLabel})` : '';
+
     if (taxRadar?.regimeUnknown) {
-      reply = `📑 **Income Tax Radar:**\n\nPlease select your tax regime (New Regime or Old Regime) in the app to view applicable deductions.\n\n*Note: Under the New Tax Regime, Section 80C and 80D deductions do not apply.*`;
+      if (userLang.code === 'mr') {
+        reply = `📑 **इन्कम टॅक्स रडार:**\n\nकृपया ॲपमध्ये तुमची कर प्रणाली (नवीन किंवा जुनी कर पद्धत) निवडा, जेणेकरून योग्य वजावट तपासता येईल.\n\n*टीप: नवीन कर प्रणाली (New Tax Regime) अंतर्गत Section 80C आणि 80D वजावट लागू होत नाही.*`;
+      } else if (userLang.code === 'hi') {
+        reply = `📑 **इनकम टैक्स रडार:**\n\nकृपया ऐप में अपना टैक्स रिजीम (नया या पुराना टैक्स सिस्टम) चुनें ताकि सही छूट देखी जा सके।\n\n*नोट: नए टैक्स रिजीम के तहत धारा 80C और 80D की छूट लागू नहीं होती है।*`;
+      } else {
+        reply = `📑 **Income Tax Radar:**\n\nPlease select your tax regime (New Regime or Old Regime) in the app to view applicable deductions.\n\n*Note: Under the New Tax Regime, Section 80C and 80D deductions do not apply.*`;
+      }
       insights = { regimeUnknown: true };
     } else if (taxRadar?.taxRegime === 'new') {
-      reply = `📑 **Income Tax Radar (${taxRadar.financialYearLabel}):**\n\nYou are on the **New Tax Regime**.\n\nSection 80C and 80D deductions do not apply under the New Tax Regime (default since FY 2023-24). Standard deduction and lower tax slab rates apply instead.`;
+      if (userLang.code === 'mr') {
+        reply = `📑 **इन्कम टॅक्स रडार${fyLabel}:**\n\nतुम्ही **नवीन कर प्रणाली (New Tax Regime)** वर आहात.\n\nनवीन कर प्रणालीत Section 80C आणि 80D वजावट लागू होत नाही. त्याऐवजी स्टँडर्ड डिडक्शन आणि कमी कर स्लॅब दर लागू होतात.`;
+      } else if (userLang.code === 'hi') {
+        reply = `📑 **इनकम टैक्स रडार${fyLabel}:**\n\nआप **नए टैक्स रिजीम (New Tax Regime)** पर हैं।\n\nनए टैक्स रिजीम में धारा 80C और 80D की छूट लागू नहीं होती। इसके बजाय स्टैंडर्ड डिडक्शन और कम टैक्स स्लैब दरें लागू होती हैं।`;
+      } else {
+        reply = `📑 **Income Tax Radar${fyLabel}:**\n\nYou are on the **New Tax Regime**.\n\nSection 80C and 80D deductions do not apply under the New Tax Regime (default since FY 2023-24). Standard deduction and lower tax slab rates apply instead.`;
+      }
       insights = { taxRegime: 'new', notApplicable: true };
     } else if (taxRadar?.empty) {
-      reply = `📑 **Income Tax Radar (${taxRadar.financialYearLabel} - Old Regime):**\n\nNo tax-saving investments or insurance policies recorded yet.\n\nAdd your ELSS mutual funds, PPF, or life/health insurance policies in the Financial Hub to track your Section 80C (up to ₹1.5L) and Section 80D (up to ₹25k) deductions.`;
+      if (userLang.code === 'mr') {
+        reply = `📑 **इन्कम टॅक्स रडार${fyLabel} - जुनी कर पद्धत:**\n\nकोणतीही कर बचत गुंतवणूक किंवा विमा पॉलिसी नोंदवलेली नाही.\n\nSection 80C (₹१.५ लाखांपर्यंत) आणि Section 80D (₹२५ हजारांपर्यंत) वजावट ट्रॅक करण्यासाठी Financial Hub मध्ये PPF, ELSS किंवा विमा पॉलिसी जोडा.`;
+      } else if (userLang.code === 'hi') {
+        reply = `📑 **इनकम टैक्स रडार${fyLabel} - पुरानी कर प्रणाली:**\n\nकोई टैक्स-बचत निवेश या बीमा पॉलिसी दर्ज नहीं है।\n\nधारा 80C (₹1.5 लाख तक) और धारा 80D (₹25 हजार तक) छूट ट्रैक करने के लिए Financial Hub में PPF, ELSS या बीमा पॉलिसी जोड़ें।`;
+      } else {
+        reply = `📑 **Income Tax Radar${fyLabel} - Old Regime:**\n\nNo tax-saving investments or insurance policies recorded yet.\n\nAdd your ELSS mutual funds, PPF, or life/health insurance policies in the Financial Hub to track your Section 80C (up to ₹1.5L) and Section 80D (up to ₹25k) deductions.`;
+      }
       insights = { taxRegime: 'old', empty: true };
     } else {
       const u80C = taxRadar.section80C.utilizedINR;
       const r80C = taxRadar.section80C.remainingINR;
       const u80D = taxRadar.section80D.utilizedINR;
 
-      reply = `📑 **Income Tax Radar (${taxRadar.financialYearLabel} - Old Regime):**\n\n- **Section 80C:** ₹${u80C.toLocaleString('en-IN')} claimed of ₹1,50,000 (${taxRadar.section80C.percentage}%)\n- **Section 80D:** ₹${u80D.toLocaleString('en-IN')} claimed of ₹25,000 (${taxRadar.section80D.percentage}%)\n\n💡 ${taxRadar.actionableTip}`;
+      if (userLang.code === 'mr') {
+        reply = `📑 **इन्कम टॅक्स रडार${fyLabel} - जुनी कर पद्धत:**\n\n- **Section 80C:** ₹१,५०,००० पैकी ₹${u80C.toLocaleString('en-IN')} क्लेम केले (${taxRadar.section80C.percentage}%)\n- **Section 80D:** ₹२५,००० पैकी ₹${u80D.toLocaleString('en-IN')} क्लेम केले (${taxRadar.section80D.percentage}%)\n\n💡 ${taxRadar.actionableTip}`;
+      } else if (userLang.code === 'hi') {
+        reply = `📑 **इनकम टैक्स रडार${fyLabel} - पुरानी कर प्रणाली:**\n\n- **Section 80C:** ₹1,50,000 में से ₹${u80C.toLocaleString('en-IN')} क्लेम किया (${taxRadar.section80C.percentage}%)\n- **Section 80D:** ₹25,000 में से ₹${u80D.toLocaleString('en-IN')} क्लेम किया (${taxRadar.section80D.percentage}%)\n\n💡 ${taxRadar.actionableTip}`;
+      } else {
+        reply = `📑 **Income Tax Radar${fyLabel} - Old Regime:**\n\n- **Section 80C:** ₹${u80C.toLocaleString('en-IN')} claimed of ₹1,50,000 (${taxRadar.section80C.percentage}%)\n- **Section 80D:** ₹${u80D.toLocaleString('en-IN')} claimed of ₹25,000 (${taxRadar.section80D.percentage}%)\n\n💡 ${taxRadar.actionableTip}`;
+      }
       insights = { utilized80C: u80C, remaining80C: r80C, utilized80D: u80D };
     }
-    suggestedFollowUps = ['Show my loans', 'Check safe spend limit'];
+    suggestedFollowUps = userLang.code === 'mr'
+      ? ['माझे कर्ज दाखवा', 'सुरक्षित मर्यादा तपासा']
+      : userLang.code === 'hi'
+      ? ['मेरे लोन दिखाएं', 'सुरक्षित लिमिट देखें']
+      : ['Show my loans', 'Check safe spend limit'];
   }
 
   // Pattern F: Loans / Prepayment (English, Marathi, Hindi)
@@ -489,9 +535,19 @@ Rules:
     lower.includes('ब्याज')
   ) {
     if (loanAccounts.length === 0) {
-      reply = `💡 **Loan & EMI Simulator:**\n\nYou haven't added any loan accounts yet. Add your home, auto, or personal loan in the **Financial Hub** to calculate interest savings and prepayment strategies!`;
+      if (userLang.code === 'mr') {
+        reply = `💡 **कर्ज आणि ईएमआय सिम्युलेटर:**\n\nतुम्ही अजून कोणतेही कर्ज खाते जोडलेले नाही. व्याजावरील बचत आणि प्री-पेमेंट समजून घेण्यासाठी **Financial Hub** मध्ये तुमचे कर्ज जोडा!`;
+      } else if (userLang.code === 'hi') {
+        reply = `💡 **लोन और ईएमआई सिम्युलेटर:**\n\nआपने अभी तक कोई लोन खाता नहीं जोड़ा है। ब्याज बचत और प्री-पेमेंट समझने के लिए **Financial Hub** में अपना लोन जोड़ें!`;
+      } else {
+        reply = `💡 **Loan & EMI Simulator:**\n\nYou haven't added any loan accounts yet. Add your home, auto, or personal loan in the **Financial Hub** to calculate interest savings and prepayment strategies!`;
+      }
       insights = { hasLoans: false };
-      suggestedFollowUps = ['Check safe spend limit', 'Show monthly summary'];
+      suggestedFollowUps = userLang.code === 'mr'
+        ? ['सुरक्षित मर्यादा तपासा', 'या महिन्याचा सारांश दाखवा']
+        : userLang.code === 'hi'
+        ? ['सुरक्षित लिमिट देखें', 'इस महीने का सारांश दिखाएं']
+        : ['Check safe spend limit', 'Show monthly summary'];
     } else {
       const firstLoan = loanAccounts[0];
       const principal = Math.round((firstLoan.principalAmount || firstLoan.outstandingAmount || 0) / 100);
@@ -499,10 +555,22 @@ Rules:
       const tenure = firstLoan.tenureMonths;
 
       if (principal <= 0) {
-        reply = `💡 **Loan Simulator (${firstLoan.bankName}):**\n\nPlease update the principal amount for your ${firstLoan.bankName} loan in the Financial Hub to run prepayment calculations.`;
+        if (userLang.code === 'mr') {
+          reply = `💡 **कर्ज सिम्युलेटर (${firstLoan.bankName}):**\n\nप्री-पेमेंट कॅल्क्युलेशनसाठी कृपया Financial Hub मध्ये तुमच्या ${firstLoan.bankName} कर्जाची मुद्दल रक्कम अपडेट करा.`;
+        } else if (userLang.code === 'hi') {
+          reply = `💡 **लोन सिम्युलेटर (${firstLoan.bankName}):**\n\nप्री-पेमेंट गणना के लिए कृपया Financial Hub में अपने ${firstLoan.bankName} लोन की मूल राशि अपडेट करें।`;
+        } else {
+          reply = `💡 **Loan Simulator (${firstLoan.bankName}):**\n\nPlease update the principal amount for your ${firstLoan.bankName} loan in the Financial Hub to run prepayment calculations.`;
+        }
         insights = { hasLoans: true, principal: 0 };
       } else if (!tenure || tenure <= 0) {
-        reply = `💡 **Loan Simulator (${firstLoan.bankName}):**\n\nPlease update the tenure for your ${firstLoan.bankName} loan in the Financial Hub to run prepayment calculations.`;
+        if (userLang.code === 'mr') {
+          reply = `💡 **कर्ज सिम्युलेटर (${firstLoan.bankName}):**\n\nप्री-पेमेंट कॅल्क्युलेशनसाठी कृपया Financial Hub मध्ये तुमच्या ${firstLoan.bankName} कर्जाचा कालावधी अपडेट करा.`;
+        } else if (userLang.code === 'hi') {
+          reply = `💡 **लोन सिम्युलेटर (${firstLoan.bankName}):**\n\nप्री-पेमेंट गणना के लिए कृपया Financial Hub में अपने ${firstLoan.bankName} लोन की अवधि अपडेट करें।`;
+        } else {
+          reply = `💡 **Loan Simulator (${firstLoan.bankName}):**\n\nPlease update the tenure for your ${firstLoan.bankName} loan in the Financial Hub to run prepayment calculations.`;
+        }
         insights = { hasLoans: true, tenure: 0 };
       } else {
         try {
@@ -513,14 +581,30 @@ Rules:
             extraMonthlyPrepayment: Math.max(1000, Math.round(principal * 0.002)),
           });
 
-          reply = `💡 **Loan Simulator (${firstLoan.bankName} ₹${principal.toLocaleString('en-IN')} @ ${rate}%):**\n\n${sim.recommendation}\n\nCheck the interactive Loan Simulator in the Hub to test different prepayment amounts.`;
+          if (userLang.code === 'mr') {
+            reply = `💡 **कर्ज सिम्युलेटर (${firstLoan.bankName} ₹${principal.toLocaleString('en-IN')} @ ${rate}%):**\n\n${sim.recommendation}\n\nवेगवेगळ्या प्री-पेमेंट रकमेची चाचणी घेण्यासाठी Financial Hub मधील इंटरॅक्टिव्ह लोन सिम्युलेटर वापरा.`;
+          } else if (userLang.code === 'hi') {
+            reply = `💡 **लोन सिम्युलेटर (${firstLoan.bankName} ₹${principal.toLocaleString('en-IN')} @ ${rate}%):**\n\n${sim.recommendation}\n\nविभिन्न प्री-पेमेंट राशियों का परीक्षण करने के लिए Financial Hub में इंटरैक्टिव लोन सिम्युलेटर का उपयोग करें।`;
+          } else {
+            reply = `💡 **Loan Simulator (${firstLoan.bankName} ₹${principal.toLocaleString('en-IN')} @ ${rate}%):**\n\n${sim.recommendation}\n\nCheck the interactive Loan Simulator in the Hub to test different prepayment amounts.`;
+          }
           insights = { principal, interestSaved: sim.totalInterestSavedINR, yearsSaved: sim.yearsSaved };
         } catch {
-          reply = `💡 You have a loan with **${firstLoan.bankName}**. Open the Loan Simulator in the Financial Hub to calculate interest savings.`;
+          if (userLang.code === 'mr') {
+            reply = `💡 तुमचे **${firstLoan.bankName}** कडे कर्ज आहे. व्याजावरील बचत पाहण्यासाठी Financial Hub मध्ये लोन सिम्युलेटर उघडा.`;
+          } else if (userLang.code === 'hi') {
+            reply = `💡 आपका **${firstLoan.bankName}** के पास लोन है। ब्याज बचत देखने के लिए Financial Hub में लोन सिम्युलेटर खोलें।`;
+          } else {
+            reply = `💡 You have a loan with **${firstLoan.bankName}**. Open the Loan Simulator in the Financial Hub to calculate interest savings.`;
+          }
           insights = { hasLoans: true };
         }
       }
-      suggestedFollowUps = ['Check my safe spend limit', 'Show monthly summary'];
+      suggestedFollowUps = userLang.code === 'mr'
+        ? ['सुरक्षित मर्यादा तपासा', 'या महिन्याचा सारांश दाखवा']
+        : userLang.code === 'hi'
+        ? ['सुरक्षित लिमिट देखें', 'इस महीने का सारांश दिखाएं']
+        : ['Check safe spend limit', 'Show monthly summary'];
     }
   }
 
@@ -587,9 +671,11 @@ async function streamChat(userId, message, history = [], res) {
   };
 
   try {
-    const query = (message || '').trim();
+    const rawQuery = (message || '').trim();
+    const translit = normalizeTransliteratedEnglish(rawQuery);
+    const query = translit.isTransliterated ? translit.text : rawQuery;
     const currentMonth = resolveMonth();
-    const userLang = detectLanguage(query);
+    const userLang = translit.isTransliterated ? { code: 'en', name: 'English' } : detectLanguage(query);
 
     // 1. Fetch user's live financial data
     const [txns, safeSpend, subs, taxRadar, accounts, policies] = await fetchUserFinancialContext(userId, currentMonth);
@@ -615,11 +701,15 @@ async function streamChat(userId, message, history = [], res) {
 
     // 3. Stream text response
     let streamedViaLLM = false;
-    let suggestedFollowUps = [
-      'How much can I spend today?',
-      'Show my subscriptions',
-      'How can I save tax?',
-    ];
+    let suggestedFollowUps = userLang.code === 'mr'
+      ? ['मी आज किती खर्च करू शकतो?', 'माझे सबस्क्रिप्शन दाखवा', 'टॅक्स कसा वाचवू?']
+      : userLang.code === 'hi'
+      ? ['आज मैं कितना खर्च कर सकता हूँ?', 'मेरे सब्सक्रिप्शन दिखाएं', 'टैक्स कैसे बचाएं?']
+      : [
+        'How much can I spend today?',
+        'Show my subscriptions',
+        'How can I save tax?',
+      ];
 
     if (isCopilotEnabled()) {
       try {
@@ -674,7 +764,7 @@ Rules:
 
     if (!streamedViaLLM) {
       // Deterministic rules reply
-      const ruleResult = await processChat(userId, message, history);
+      const ruleResult = await processChat(userId, query, history);
       suggestedFollowUps = ruleResult.suggestedFollowUps || suggestedFollowUps;
       const text = ruleResult.reply || '';
 

@@ -10,6 +10,152 @@ const env = require('../config/env');
  * 3. OpenAI Whisper (whisper-1)
  */
 
+const DEVANAGARI_DIGITS_MAP = {
+  '०': '0', '१': '1', '२': '2', '३': '3', '४': '4',
+  '५': '5', '६': '6', '७': '7', '८': '8', '९': '9'
+};
+
+function normalizeDigits(str = '') {
+  return str.replace(/[०-९]/g, (d) => DEVANAGARI_DIGITS_MAP[d] || d);
+}
+
+/**
+ * Common English words phonetically transliterated into Devanagari by some STT engines.
+ * If detected, we reconstruct the genuine English Latin sentence.
+ */
+const DEVANAGARI_ENGLISH_MAP = {
+  // Auxiliary & Pronouns
+  'कॅन': 'can',
+  'कैन': 'can',
+  'आय': 'I',
+  'एम': 'am',
+  'इज': 'is',
+  'आर': 'are',
+  'यू': 'you',
+  'वी': 'we',
+  'दे': 'they',
+  'माय': 'my',
+  'मी': 'me',
+  // Verbs & Actions
+  'अफोर्ड': 'afford',
+  'अफोर्डेबल': 'affordable',
+  'स्पेंड': 'spend',
+  'स्पेंट': 'spent',
+  'बाय': 'buy',
+  'पे': 'pay',
+  'पेड': 'paid',
+  'शो': 'show',
+  'टेल': 'tell',
+  'चेक': 'check',
+  'सेव्ह': 'save',
+  'डू': 'do',
+  'डिड': 'did',
+  'हॅव': 'have',
+  'गेट': 'get',
+  // Financial terms
+  'रूपीज': 'rupees',
+  'रुपीज': 'rupees',
+  'रुपीस': 'rupees',
+  'रुपिज': 'rupees',
+  'बजेट': 'budget',
+  'मनी': 'money',
+  'टॅक्स': 'tax',
+  'टैक्स': 'tax',
+  'लिमिट': 'limit',
+  'सेफ': 'safe',
+  'सबस्क्रिप्शन': 'subscription',
+  'सबस्क्रिप्शन्स': 'subscriptions',
+  'ट्रान्झॅक्शन': 'transaction',
+  'ट्रान्झॅक्शन्स': 'transactions',
+  'लोन': 'loan',
+  'ईएमआय': 'EMI',
+  // Daily life & dining
+  'डिनर': 'dinner',
+  'लंच': 'lunch',
+  'ब्रेकफास्ट': 'breakfast',
+  'फूड': 'food',
+  'हॉटेल': 'hotel',
+  'पार्टी': 'party',
+  'शूज': 'shoes',
+  'क्लॉथ्स': 'clothes',
+  // Time words
+  'टूनाईट': 'tonight',
+  'टुनाइट': 'tonight',
+  'टुनाईट': 'tonight',
+  'टुडे': 'today',
+  'टुडेज': "today's",
+  'यस्टरडे': 'yesterday',
+  'टुमारो': 'tomorrow',
+  'मंथ': 'month',
+  'लास्ट': 'last',
+  'धिस': 'this',
+  'नेक्स्ट': 'next',
+  // Interrogatives & prepositions
+  'हाऊ': 'how',
+  'हाउ': 'how',
+  'मच': 'much',
+  'व्हॉट': 'what',
+  'व्हेन': 'when',
+  'व्हेअर': 'where',
+  'ऑन': 'on',
+  'इन': 'in',
+  'फॉर': 'for',
+  'द': 'the',
+};
+
+/**
+ * Detects if a Devanagari string is actually transliterated English phonetics
+ * (e.g. "कॅन आय अफोर्ड 2000 रूपीज डिनर टूनाईट"). If so, reconstructs clean English.
+ */
+function normalizeTransliteratedEnglish(text = '') {
+  const str = text.trim();
+  if (!str) return { text: '', isTransliterated: false };
+
+  // Only check if text contains Devanagari characters
+  if (!/[\u0900-\u097F]/.test(str)) {
+    return { text: str, isTransliterated: false };
+  }
+
+  const rawWords = str.split(/\s+/);
+  let matchedEnglishCount = 0;
+  let devanagariWordCount = 0;
+
+  const convertedWords = rawWords.map((word) => {
+    // Strip trailing punctuation
+    const cleanWord = word.replace(/[?!.,;:]/g, '');
+    const hasDev = /[\u0900-\u097F]/.test(cleanWord);
+    if (hasDev) devanagariWordCount++;
+
+    const lower = cleanWord.toLowerCase();
+    if (DEVANAGARI_ENGLISH_MAP[lower]) {
+      matchedEnglishCount++;
+      return DEVANAGARI_ENGLISH_MAP[lower];
+    }
+    // Numbers or English words stay as is
+    return cleanWord;
+  });
+
+  // If 2 or more transliterated English words, or starts with "can I" / "how much",
+  // and majority of Devanagari words matched:
+  const firstLower = rawWords[0]?.replace(/[?!.,;:]/g, '').toLowerCase();
+  const startsWithEnglishPattern =
+    firstLower === 'कॅन' || firstLower === 'कैन' || firstLower === 'हाऊ' || firstLower === 'हाउ' || firstLower === 'शो';
+
+  if (
+    (matchedEnglishCount >= 2 && devanagariWordCount > 0 && matchedEnglishCount / devanagariWordCount >= 0.4) ||
+    (startsWithEnglishPattern && matchedEnglishCount >= 1)
+  ) {
+    let result = convertedWords.join(' ');
+    result = result.charAt(0).toUpperCase() + result.slice(1);
+    if (!/[?.!]$/.test(result)) {
+      result += '?';
+    }
+    return { text: result, isTransliterated: true };
+  }
+
+  return { text: str, isTransliterated: false };
+}
+
 /**
  * Detect language script from text (Devanagari vs Latin) and classify
  * between Marathi, Hindi, and English.
@@ -18,31 +164,45 @@ function detectLanguage(text = '') {
   const str = text.trim();
   if (!str) return { code: 'en', name: 'English' };
 
-  // Devanagari range: \u0900-\u097F
+  // 1. Check if it's transliterated English
+  const translitCheck = normalizeTransliteratedEnglish(str);
+  if (translitCheck.isTransliterated) {
+    return { code: 'en', name: 'English' };
+  }
+
+  // 2. Check for Devanagari Unicode block (\u0900-\u097F)
   const hasDevanagari = /[\u0900-\u097F]/.test(str);
   if (!hasDevanagari) {
-    // Check for phonetic Hinglish / Marathi words
-    if (/\b(?:kiti|kharch|jhala|jhale|aahe|shillak|gheu|shakto|paise|mahina)\b/i.test(str)) {
+    // Latin script - check for phonetic Marathi vs Hinglish vs English
+    if (/\b(?:kiti|kharch|jhala|jhale|jhali|aahe|aahet|nahi|shillak|gheu|shakto|shakte|paise|mahina|parwadel|dakhva|sanga)\b/i.test(str)) {
       return { code: 'mr', name: 'Marathi (Latin)' };
     }
-    if (/\b(?:kitna|kharcha|hua|hue|hai|bacha|kar|sakta|paisa|pe|batao)\b/i.test(str)) {
+    if (/\b(?:kitna|kharcha|hua|hue|hui|hai|hain|nahi|bacha|kar|sakta|sakti|paisa|pe|batao|dikhao|karo)\b/i.test(str)) {
       return { code: 'hi', name: 'Hinglish' };
     }
     return { code: 'en', name: 'English' };
   }
 
-  // Common Hindi marker words in Devanagari (check Hindi first to avoid overlap on shared terms)
-  if (/(?:है|नहीं|हुआ|हुए|किया|कितना|बचा|सकता|होगा|चाहिए|बताओ|खाना)/.test(str)) {
-    return { code: 'hi', name: 'Hindi' };
-  }
+  // 3. Devanagari script: Distinct Marathi marker words
+  const isMarathi = /(?:आहे|आहेत|नाही|झाला|झाली|झाले|केला|केली|केले|किती|शिल्लक|परवडेल|परवडतील|शकतो|शकते|शकू|होईल|पाहिजे|सांगा|सांग|दाखवा|दाखव|जेवण|खाण्या|महिना|पैसे|बघू|बघ|चालू|आता|इथे|माझे|माझा|माझी|मला|तुम्ही|आपण|\bका\b)/.test(str);
 
-  // Common Marathi marker words in Devanagari
-  if (/(?:आहे|नाही|झाला|झाले|केला|किती|शिल्लक|परवडेल|शकतो|होईल|पाहिजे|सांगा|जेवण|महिना)/.test(str)) {
+  // 4. Devanagari script: Distinct Hindi marker words
+  const isHindi = /(?:है|हैं|नहीं|हुआ|हुए|हुई|किया|किए|कितना|कितनी|कितने|बचा|बची|बचे|सकता|सकती|सकते|होगा|होगी|होंगे|चाहिए|बताओ|बताइए|दिखाओ|दिखाइए|खाना|क्या|मुझे|मेरा|मेरी|मेरे|किसे|कहाँ|हूँ)/.test(str);
+
+  if (isMarathi && !isHindi) {
     return { code: 'mr', name: 'Marathi' };
   }
+  if (isHindi && !isMarathi) {
+    return { code: 'hi', name: 'Hindi' };
+  }
+  if (isMarathi && isHindi) {
+    const mrScore = (str.match(/(?:आहे|आहेत|नाही|झाला|झाली|झाले|केला|किती|शिल्लक|परवडेल|परवडतील|शकतो|शकते|सांगा|दाखवा|मला|माझे|माझा|माझी|\bका\b)/g) || []).length;
+    const hiScore = (str.match(/(?:है|हैं|नहीं|हुआ|हुए|किया|कितना|बचा|बचे|सकता|होगा|चाहिए|बताओ|दिखाओ|क्या|मुझे|मेरा|मेरी|मेरे)/g) || []).length;
+    return mrScore >= hiScore ? { code: 'mr', name: 'Marathi' } : { code: 'hi', name: 'Hindi' };
+  }
 
-  // Default Devanagari to Hindi
-  return { code: 'hi', name: 'Hindi' };
+  // Default Devanagari when ambiguous to Marathi (since NRYN's primary user base is in MH)
+  return { code: 'mr', name: 'Marathi' };
 }
 
 /**
@@ -77,20 +237,27 @@ async function transcribeWithOpenRouter(buffer, mimeType, key, prompt = '', time
           {
             role: 'system',
             content:
-              'You are an expert audio speech-to-text transcriber for the NRYN personal finance app. ' +
-              'Your job is to transcribe the user\'s spoken words verbatim in Marathi, Hindi, Hinglish, or English.\n\n' +
-              'RULES:\n' +
-              '1. Output ONLY the raw spoken text verbatim.\n' +
-              '2. If spoken in Marathi or Hindi, output Devanagari script.\n' +
-              '3. Do NOT add conversational responses, questions, or markdown.\n' +
-              '4. If there is no speech or only silence in the audio, respond with exactly: EMPTY_AUDIO',
+              'You are an expert audio speech-to-text transcriber for the NRYN personal finance app.\n\n' +
+              'CRITICAL SCRIPT & LANGUAGE RULES:\n' +
+              '1. Listen carefully to what language the user spoke:\n' +
+              '   - If the user spoke in ENGLISH (even with an Indian accent, or mentioning rupees, UPI, dinner, budget, etc.):\n' +
+              '     Transcribe strictly in standard ENGLISH using the standard LATIN ALPHABET (e.g. "Can I afford 2000 rupees dinner tonight?").\n' +
+              '     NEVER EVER transliterate English into Devanagari script! NEVER write "कॅन आय अफोर्ड". Always output English words in Latin alphabet.\n' +
+              '   - If the user spoke in MARATHI (मराठी):\n' +
+              '     Transcribe in MARATHI using DEVANAGARI script (e.g. "मला आज २००० रुपये खर्च परवडेल का?").\n' +
+              '   - If the user spoke in HINDI (हिंदी):\n' +
+              '     Transcribe in HINDI using DEVANAGARI script (e.g. "क्या मैं आज २००० रुपये खर्च कर सकता हूँ?").\n' +
+              '   - If the user spoke in HINGLISH (Hindi words in English alphabet):\n' +
+              '     Transcribe verbatim in Latin script (e.g. "Mera aaj kitna kharcha hua?").\n' +
+              '2. Output ONLY the raw spoken words verbatim. Do NOT translate. Do NOT answer the query. Do NOT add conversational responses or markdown.\n' +
+              '3. If there is no speech or only silence in the audio, respond with exactly: EMPTY_AUDIO',
           },
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: prompt ? `Context: ${prompt}. Transcribe spoken audio:` : 'Transcribe this spoken audio verbatim:',
+                text: 'Transcribe the spoken audio verbatim in its original spoken language (English in Latin alphabet, Marathi/Hindi in Devanagari script):',
               },
               {
                 type: 'image_url',
@@ -181,14 +348,20 @@ async function transcribeAudio(buffer, filename = 'audio.m4a', mimeType = 'audio
     };
   }
 
+  const defaultPrompt = prompt || 'English, Marathi, Hindi personal finance questions, budget, expenses, UPI, rupees, dinner';
+
   // 1. Try Groq Whisper if key exists (fastest whisper endpoint)
   if (env.llm.groqKey) {
     try {
-      const text = await transcribeWithWhisper(
+      let rawText = await transcribeWithWhisper(
         { name: 'groq', model: 'whisper-large-v3', url: 'https://api.groq.com/openai/v1/audio/transcriptions' },
-        buffer, filename, mimeType, env.llm.groqKey, prompt, timeoutMs
+        buffer, filename, mimeType, env.llm.groqKey, defaultPrompt, timeoutMs
       );
-      const detected = detectLanguage(text);
+      rawText = normalizeDigits(rawText);
+      const translitCheck = normalizeTransliteratedEnglish(rawText);
+      const text = translitCheck.text;
+      const detected = translitCheck.isTransliterated ? { code: 'en', name: 'English' } : detectLanguage(text);
+
       return {
         ok: true,
         provider: 'groq',
@@ -205,8 +378,12 @@ async function transcribeAudio(buffer, filename = 'audio.m4a', mimeType = 'audio
   // 2. Try OpenRouter Gemini (high accuracy for Marathi, Hindi, English, and active on Render)
   if (env.llm.openrouterKey) {
     try {
-      const text = await transcribeWithOpenRouter(buffer, mimeType, env.llm.openrouterKey, prompt, timeoutMs);
-      const detected = detectLanguage(text);
+      let rawText = await transcribeWithOpenRouter(buffer, mimeType, env.llm.openrouterKey, defaultPrompt, timeoutMs);
+      rawText = normalizeDigits(rawText);
+      const translitCheck = normalizeTransliteratedEnglish(rawText);
+      const text = translitCheck.text;
+      const detected = translitCheck.isTransliterated ? { code: 'en', name: 'English' } : detectLanguage(text);
+
       return {
         ok: true,
         provider: 'openrouter-gemini',
@@ -223,11 +400,15 @@ async function transcribeAudio(buffer, filename = 'audio.m4a', mimeType = 'audio
   // 3. Try OpenAI Whisper if key exists
   if (env.llm.openaiKey) {
     try {
-      const text = await transcribeWithWhisper(
+      let rawText = await transcribeWithWhisper(
         { name: 'openai', model: 'whisper-1', url: 'https://api.openai.com/v1/audio/transcriptions' },
-        buffer, filename, mimeType, env.llm.openaiKey, prompt, timeoutMs
+        buffer, filename, mimeType, env.llm.openaiKey, defaultPrompt, timeoutMs
       );
-      const detected = detectLanguage(text);
+      rawText = normalizeDigits(rawText);
+      const translitCheck = normalizeTransliteratedEnglish(rawText);
+      const text = translitCheck.text;
+      const detected = translitCheck.isTransliterated ? { code: 'en', name: 'English' } : detectLanguage(text);
+
       return {
         ok: true,
         provider: 'openai',
@@ -249,4 +430,6 @@ async function transcribeAudio(buffer, filename = 'audio.m4a', mimeType = 'audio
 module.exports = {
   transcribeAudio,
   detectLanguage,
+  normalizeTransliteratedEnglish,
+  normalizeDigits,
 };

@@ -35,7 +35,7 @@ exports.transcribe = async (req, res, next) => {
     }
 
     const { buffer, originalname, mimetype } = req.file;
-    const prompt = req.body?.prompt || 'Marathi, Hindi, Hinglish, Indian Personal Finance, UPI, Rupee amounts';
+    const prompt = req.body?.prompt || 'English, Marathi, Hindi personal finance questions, budget, expenses, UPI, rupees, dinner';
 
     const result = await transcribeAudio(
       buffer,
