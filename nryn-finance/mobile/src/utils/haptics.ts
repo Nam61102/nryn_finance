@@ -1,55 +1,63 @@
 import { Platform } from 'react-native';
-import * as Haptics from 'expo-haptics';
 
 const isNative = Platform.OS !== 'web';
 
+let HapticsModule: any = null;
+if (isNative) {
+  try {
+    HapticsModule = require('expo-haptics');
+  } catch {
+    HapticsModule = null;
+  }
+}
+
 export const haptic = {
   light: () => {
-    if (isNative) {
+    if (isNative && HapticsModule?.impactAsync) {
       try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+        HapticsModule.impactAsync(HapticsModule.ImpactFeedbackStyle?.Light ?? 'light').catch(() => {});
       } catch {}
     }
   },
   medium: () => {
-    if (isNative) {
+    if (isNative && HapticsModule?.impactAsync) {
       try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => {});
+        HapticsModule.impactAsync(HapticsModule.ImpactFeedbackStyle?.Medium ?? 'medium').catch(() => {});
       } catch {}
     }
   },
   heavy: () => {
-    if (isNative) {
+    if (isNative && HapticsModule?.impactAsync) {
       try {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy).catch(() => {});
+        HapticsModule.impactAsync(HapticsModule.ImpactFeedbackStyle?.Heavy ?? 'heavy').catch(() => {});
       } catch {}
     }
   },
   success: () => {
-    if (isNative) {
+    if (isNative && HapticsModule?.notificationAsync) {
       try {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success).catch(() => {});
+        HapticsModule.notificationAsync(HapticsModule.NotificationFeedbackType?.Success ?? 'success').catch(() => {});
       } catch {}
     }
   },
   warning: () => {
-    if (isNative) {
+    if (isNative && HapticsModule?.notificationAsync) {
       try {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning).catch(() => {});
+        HapticsModule.notificationAsync(HapticsModule.NotificationFeedbackType?.Warning ?? 'warning').catch(() => {});
       } catch {}
     }
   },
   error: () => {
-    if (isNative) {
+    if (isNative && HapticsModule?.notificationAsync) {
       try {
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error).catch(() => {});
+        HapticsModule.notificationAsync(HapticsModule.NotificationFeedbackType?.Error ?? 'error').catch(() => {});
       } catch {}
     }
   },
   selection: () => {
-    if (isNative) {
+    if (isNative && HapticsModule?.selectionAsync) {
       try {
-        Haptics.selectionAsync().catch(() => {});
+        HapticsModule.selectionAsync().catch(() => {});
       } catch {}
     }
   },

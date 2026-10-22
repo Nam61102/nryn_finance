@@ -1,5 +1,13 @@
-import * as Speech from 'expo-speech';
 import { Platform } from 'react-native';
+
+let SpeechModule: any = null;
+if (Platform.OS !== 'web') {
+  try {
+    SpeechModule = require('expo-speech');
+  } catch {
+    SpeechModule = null;
+  }
+}
 
 /**
  * Detect language script and return appropriate BCP-47 locale code.
@@ -85,7 +93,7 @@ export interface SpeakOptions {
  */
 export async function speakText(text: string, options: SpeakOptions = {}): Promise<void> {
   const cleaned = cleanTextForSpeech(text);
-  if (!cleaned) return;
+  if (!cleaned || !SpeechModule?.speak) return;
 
   try {
     // Stop any speech currently in progress
@@ -93,12 +101,12 @@ export async function speakText(text: string, options: SpeakOptions = {}): Promi
 
     const targetLanguage = options.language || detectVoiceLanguage(text);
 
-    Speech.speak(cleaned, {
+    SpeechModule.speak(cleaned, {
       language: targetLanguage,
       rate: options.rate ?? 0.95, // Slightly gentler rate for clear Indian diction
       pitch: options.pitch ?? 1.0,
       onDone: options.onDone,
-      onError: (err) => {
+      onError: (err: any) => {
         if (options.onError) {
           options.onError(err instanceof Error ? err : new Error(String(err)));
         }
@@ -117,9 +125,10 @@ export async function speakText(text: string, options: SpeakOptions = {}): Promi
  */
 export async function stopSpeech(): Promise<void> {
   try {
-    const isSpeaking = await Speech.isSpeakingAsync().catch(() => false);
-    if (isSpeaking) {
-      Speech.stop();
+    if (!SpeechModule?.isSpeakingAsync) return;
+    const isSpeaking = await SpeechModule.isSpeakingAsync().catch(() => false);
+    if (isSpeaking && SpeechModule?.stop) {
+      SpeechModule.stop();
     }
   } catch {
     // Graceful no-op on platforms without speech synthesis
@@ -131,7 +140,8 @@ export async function stopSpeech(): Promise<void> {
  */
 export async function isSpeaking(): Promise<boolean> {
   try {
-    return await Speech.isSpeakingAsync();
+    if (!SpeechModule?.isSpeakingAsync) return false;
+    return await SpeechModule.isSpeakingAsync();
   } catch {
     return false;
   }

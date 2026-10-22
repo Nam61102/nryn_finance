@@ -4,8 +4,26 @@ import subprocess
 import zipfile
 
 BASE_DIR = r"C:\Users\user5\Downloads\nryn-finance_1\nryn_finance\nryn-finance\mobile"
-ORIG_APK = os.path.join(BASE_DIR, r"android\app\build\outputs\apk\release\app-release.apk")
-NEW_BUNDLE = os.path.join(BASE_DIR, r"dist_android\index.android.bundle")
+RELEASE_APK = os.path.join(BASE_DIR, r"android\app\build\outputs\apk\release\app-release.apk")
+FALLBACK_APK = os.path.join(BASE_DIR, r"dist_android\app-clean-aligned.apk")
+ORIG_APK = RELEASE_APK if os.path.exists(RELEASE_APK) else FALLBACK_APK
+HERMESC = os.path.join(BASE_DIR, r"node_modules\react-native\sdks\hermesc\win64-bin\hermesc.exe")
+JS_BUNDLE = os.path.join(BASE_DIR, r"dist_android\index.android.bundle")
+HBC_BUNDLE = os.path.join(BASE_DIR, r"dist_android\index.android.bundle.hbc")
+
+if os.path.exists(HERMESC) and os.path.exists(JS_BUNDLE):
+    print("0. Compiling JS bundle to Hermes bytecode (v96)...")
+    res = subprocess.run([HERMESC, "-emit-binary", "-O", "-out", HBC_BUNDLE, JS_BUNDLE], capture_output=True, text=True)
+    if res.returncode != 0:
+        print("Hermes stderr:", res.stderr)
+        raise RuntimeError("Hermes compilation failed")
+    print(f"   Compiled Hermes bytecode bundle: {os.path.getsize(HBC_BUNDLE):,} bytes")
+
+NEW_BUNDLE = HBC_BUNDLE if os.path.exists(HBC_BUNDLE) else JS_BUNDLE
+with open(NEW_BUNDLE, 'rb') as f:
+    header = f.read(4)
+print(f"   Is Hermes Bytecode (magic c6 1f bc 03): {header == b'\xc6\x1f\xbc\x03'}")
+
 KEYSTORE = os.path.join(BASE_DIR, r"android\app\debug.keystore")
 BUILD_TOOLS = r"C:\Users\user5\AppData\Local\Android\Sdk\build-tools\35.0.0"
 ZIPALIGN = os.path.join(BUILD_TOOLS, "zipalign.exe")
@@ -13,8 +31,8 @@ APKSIGNER = os.path.join(BUILD_TOOLS, "apksigner.bat")
 
 OUT_DIR = os.path.join(BASE_DIR, "dist_android")
 os.makedirs(OUT_DIR, exist_ok=True)
-UNSIGNED_APK = os.path.join(OUT_DIR, "app-clean-unsigned.apk")
-ALIGNED_APK = os.path.join(OUT_DIR, "app-clean-aligned.apk")
+UNSIGNED_APK = os.path.join(OUT_DIR, "app-new-unsigned.apk")
+ALIGNED_APK = os.path.join(OUT_DIR, "app-new-aligned.apk")
 FINAL_APK = os.path.join(BASE_DIR, "nryn-finance.apk")
 
 print(f"1. Reading original APK: {ORIG_APK}")
