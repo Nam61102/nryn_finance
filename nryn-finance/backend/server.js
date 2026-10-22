@@ -1,6 +1,23 @@
 'use strict';
 const http = require('http');
 const express = require('express');
+
+// Ensure all Express async route handlers are safely caught and never trigger unhandledRejection
+const Layer = require('express/lib/router/layer');
+const origHandle = Layer.prototype.handle_request;
+Layer.prototype.handle_request = function (req, res, next) {
+  const fn = this.handle;
+  if (fn.length > 3) return origHandle.apply(this, arguments);
+  try {
+    const ret = fn(req, res, next);
+    if (ret && typeof ret.catch === 'function') {
+      ret.catch(next);
+    }
+  } catch (err) {
+    next(err);
+  }
+};
+
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
