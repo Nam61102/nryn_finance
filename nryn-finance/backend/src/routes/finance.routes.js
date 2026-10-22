@@ -23,25 +23,41 @@ const { resolveMonth } = require('../finance/period');
 
 router.get('/analytics/summary', async (req, res) => {
   if (!isConnected()) {
+    const p = resolveMonth(req.query.month);
     const userTxns = (store.transactions || []).filter(
-      (t) => String(t.userId) === String(req.userId) && !t.deletedAt
+      (t) => {
+        if (String(t.userId) !== String(req.userId) || t.deletedAt) return false;
+        const d = new Date(t.occurredAt);
+        return d >= p.start && d <= p.end;
+      }
     );
     const spent = userTxns.filter((t) => t.isExpense && t.direction === 'debit').reduce((s, t) => s + (t.amount || 0), 0);
     const income = userTxns.filter((t) => t.direction === 'credit' && t.category === 'income').reduce((s, t) => s + (t.amount || 0), 0);
-    return res.json({ spent, income, count: userTxns.length, net: income - spent, topCategory: null });
+    return res.json({ period: p, spent, income, count: userTxns.length, net: income - spent, topCategory: null });
   }
   res.json(await analytics.monthSummary(req.userId, req.query.month));
 });
+
 router.get('/analytics/by-category', async (req, res) => {
   if (!isConnected()) {
-    const { BY_KEY } = require('../shared/categories');
+    const { BY_KEY, inferCategory } = require('../shared/categories');
+    const p = resolveMonth(req.query.month);
     const userTxns = (store.transactions || []).filter(
-      (t) => String(t.userId) === String(req.userId) && !t.deletedAt && t.isExpense && t.direction === 'debit'
+      (t) => {
+        if (String(t.userId) !== String(req.userId) || t.deletedAt || !t.isExpense || t.direction !== 'debit') return false;
+        const d = new Date(t.occurredAt);
+        return d >= p.start && d <= p.end;
+      }
     );
     const catMap = {};
+    const catTxnCounts = {};
     for (const t of userTxns) {
-      const c = t.category || 'other';
+      let c = t.category;
+      if (!c || c === 'other') {
+        c = inferCategory(t.merchantName, t.merchantRaw);
+      }
       catMap[c] = (catMap[c] || 0) + (t.amount || 0);
+      catTxnCounts[c] = (catTxnCounts[c] || 0) + 1;
     }
     const categories = Object.entries(catMap).map(([category, spent]) => ({
       category,
@@ -49,22 +65,37 @@ router.get('/analytics/by-category', async (req, res) => {
       icon: BY_KEY[category]?.icon || '📦',
       color: BY_KEY[category]?.color || '#FF6D00',
       spent,
-      count: userTxns.filter((t) => (t.category || 'other') === category).length,
+      count: catTxnCounts[category] || 0,
     })).sort((a, b) => b.spent - a.spent);
     const totalSpent = categories.reduce((s, c) => s + c.spent, 0);
-    const p = resolveMonth(req.query.month);
     return res.json({ period: p, categories, totalSpent });
   }
   res.json(await analytics.byCategory(req.userId, req.query.month));
 });
+
 router.get('/analytics/series', async (req, res) => {
   if (!isConnected()) return res.json({ series: [] });
   res.json(await analytics.series(req.userId, req.query.range, req.query.bucket));
 });
+
 router.get('/analytics/months', async (req, res) => {
   if (!isConnected()) {
-    const current = resolveMonth();
-    return res.json({ months: [{ month: current.month, label: current.label, shortLabel: current.shortLabel }] });
+    const uid = String(req.userId);
+    const userTxns = (store.transactions || []).filter((t) => String(t.userId) === uid && !t.deletedAt);
+    const monthCounts = {};
+    for (const t of userTxns) {
+      if (t.occurredAt) {
+        const m = String(t.occurredAt).slice(0, 7);
+        if (/^\d{4}-\d{2}$/.test(m)) {
+          monthCounts[m] = (monthCounts[m] || 0) + 1;
+        }
+      }
+    }
+    const current = resolveMonth().month;
+    if (!monthCounts[current]) monthCounts[current] = 0;
+    const sorted = Object.keys(monthCounts).sort().reverse();
+    const months = sorted.map((m) => ({ month: m, count: monthCounts[m], ...resolveMonth(m) }));
+    return res.json({ months });
   }
   res.json({ months: await analytics.availableMonths(req.userId) });
 });

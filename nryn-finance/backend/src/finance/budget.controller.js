@@ -134,19 +134,66 @@ async function getStatus(req, res) {
       const totalB = userBudgets.find((b) => b.scope === 'total')?.amount || 0;
       const dailyB = userBudgets.find((b) => b.scope === 'daily')?.amount || 0;
       const p = resolveMonth(req.query.month);
+      const prevP = resolveMonth(p.prev);
 
       const userTxns = (store.transactions || []).filter(
         (t) => String(t.userId) === uid && !t.deletedAt && t.isExpense && t.direction === 'debit'
       );
-      const spent = userTxns.reduce((sum, t) => sum + (t.amount || 0), 0);
+
+      const thisMonthTxns = userTxns.filter((t) => {
+        const d = new Date(t.occurredAt);
+        return d >= p.start && d <= p.end;
+      });
+      const spent = thisMonthTxns.reduce((sum, t) => sum + (t.amount || 0), 0);
+
+      const prevMonthTxns = userTxns.filter((t) => {
+        const d = new Date(t.occurredAt);
+        return d >= prevP.start && d <= prevP.end;
+      });
+      const lastMonthSpent = prevMonthTxns.reduce((sum, t) => sum + (t.amount || 0), 0);
+
       const remaining = totalB - spent;
+      const diff = spent - lastMonthSpent;
+      const isSaved = lastMonthSpent > spent;
+      const isMore = spent > lastMonthSpent;
+      const savedAmount = isSaved ? lastMonthSpent - spent : 0;
+      const moreAmount = isMore ? spent - lastMonthSpent : 0;
+      const percentChange = lastMonthSpent > 0 ? Math.round((Math.abs(diff) / lastMonthSpent) * 100) : null;
+
+      let comparisonText = '';
+      if (lastMonthSpent === 0 && spent === 0) {
+        comparisonText = 'No expenses recorded';
+      } else if (lastMonthSpent === 0) {
+        comparisonText = 'First tracked month';
+      } else if (isSaved) {
+        comparisonText = 'Saved ₹' + Math.round(savedAmount / 100).toLocaleString('en-IN') + (percentChange !== null ? ' (' + percentChange + '%)' : '') + ' compared to ' + prevP.shortLabel;
+      } else if (isMore) {
+        comparisonText = 'Spent ₹' + Math.round(moreAmount / 100).toLocaleString('en-IN') + (percentChange !== null ? ' (' + percentChange + '%)' : '') + ' more than ' + prevP.shortLabel;
+      } else {
+        comparisonText = 'Same spend as ' + prevP.shortLabel;
+      }
+
+      const comparison = {
+        currentSpent: spent,
+        lastMonthSpent,
+        diff,
+        isSaved,
+        isMore,
+        savedAmount,
+        moreAmount,
+        percentChange,
+        prevMonth: prevP.month,
+        prevLabel: prevP.shortLabel,
+        prevFullLabel: prevP.label,
+        comparisonText,
+      };
 
       const { BY_KEY } = require('../shared/categories');
       const { paceFor } = require('./budget.service');
 
       const categoryBudgets = userBudgets.filter((b) => b.scope === 'category' && b.category);
       const chips = categoryBudgets.map((b) => {
-        const catSpent = userTxns.filter((t) => t.category === b.category).reduce((s, t) => s + (t.amount || 0), 0);
+        const catSpent = thisMonthTxns.filter((t) => t.category === b.category).reduce((s, t) => s + (t.amount || 0), 0);
         return {
           category: b.category,
           label: BY_KEY[b.category]?.label || b.category,
@@ -162,22 +209,18 @@ async function getStatus(req, res) {
       });
       const allocated = chips.reduce((s, c) => s + c.budget, 0);
 
+      const now = new Date();
+      const isCurrentMonth = p.isCurrent;
+      const todaySpent = isCurrentMonth
+        ? thisMonthTxns.filter((t) => {
+            const d = new Date(t.occurredAt);
+            return d.getDate() === now.getDate() && d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+          }).reduce((s, t) => s + (t.amount || 0), 0)
+        : 0;
+
       return res.json({
         period: p,
-        comparison: {
-          currentSpent: spent,
-          lastMonthSpent: 0,
-          diff: 0,
-          isSaved: false,
-          isMore: false,
-          savedAmount: 0,
-          moreAmount: 0,
-          percentChange: null,
-          prevMonth: p.prev,
-          prevLabel: '',
-          prevFullLabel: '',
-          comparisonText: spent === 0 ? 'No expenses recorded' : 'First tracked month',
-        },
+        comparison,
         ring: {
           total: totalB,
           spent,
@@ -189,9 +232,9 @@ async function getStatus(req, res) {
         pace: paceFor(spent, totalB, p.elapsedDays, p.totalDays),
         chips,
         unallocated: totalB - allocated,
-        todaySpent: 0,
+        todaySpent,
         needsReview: 0,
-        txnCount: userTxns.length,
+        txnCount: thisMonthTxns.length,
         hasBudget: Boolean(totalB || dailyB),
         totalBudgetPaise: totalB,
         totalBudgetINR: Math.round(totalB / 100),

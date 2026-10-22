@@ -52,7 +52,8 @@ function parseAndSaveSmsFallback(messages, userId) {
       continue;
     }
 
-    let category = verdict.category || (hit.direction === 'credit' ? 'income' : 'other');
+    const { inferCategory } = require('../shared/categories');
+    let category = verdict.category || (hit.direction === 'credit' ? 'income' : inferCategory(merchantName, body));
     const txn = {
       _id: 'txn_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
       userId: String(userId),

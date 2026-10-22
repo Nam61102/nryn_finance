@@ -49,8 +49,14 @@ exports.getSafeSpend = async (req, res, next) => {
       const totalBudgetINR = Math.round(totalB / 100);
       const dailySafeSpendINR = Math.round(dailyB / 100) || Math.round(totalBudgetINR / 30);
 
+      const { resolveMonth } = require('../finance/period');
+      const p = resolveMonth(req.query.month);
       const userTxns = (store.transactions || []).filter(
-        (t) => String(t.userId) === uid && !t.deletedAt && t.isExpense && t.direction === 'debit'
+        (t) => {
+          if (String(t.userId) !== uid || t.deletedAt || !t.isExpense || t.direction !== 'debit') return false;
+          const d = new Date(t.occurredAt);
+          return d >= p.start && d <= p.end;
+        }
       );
       const totalSpentSoFarINR = Math.round(userTxns.reduce((s, t) => s + (t.amount || 0), 0) / 100);
       const todayRemainingINR = Math.max(0, dailySafeSpendINR);
@@ -174,8 +180,14 @@ exports.getAgentBriefing = async (req, res, next) => {
       const totalBudgetINR = Math.round(totalB / 100);
       const safeDailyINR = Math.round(dailyB / 100) || Math.round(totalBudgetINR / 30);
 
+      const { resolveMonth: resolveMonthBriefing } = require('../finance/period');
+      const p = resolveMonthBriefing(req.query.month);
       const userTxns = (store.transactions || []).filter(
-        (t) => String(t.userId) === uid && !t.deletedAt && t.isExpense && t.direction === 'debit'
+        (t) => {
+          if (String(t.userId) !== uid || t.deletedAt || !t.isExpense || t.direction !== 'debit') return false;
+          const d = new Date(t.occurredAt);
+          return d >= p.start && d <= p.end;
+        }
       );
       const totalSpentINR = Math.round(userTxns.reduce((s, t) => s + (t.amount || 0), 0) / 100);
       const budgetRemainingINR = Math.max(0, totalBudgetINR - totalSpentINR);

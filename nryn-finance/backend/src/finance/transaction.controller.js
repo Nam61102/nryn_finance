@@ -19,11 +19,42 @@ const SORTS = {
 async function list(req, res) {
   try {
     if (!isConnected()) {
-      let rows = store.transactions.filter((t) => t.userId === req.userId && !t.deletedAt);
+      const { inferCategory, iconFor } = require('../shared/categories');
+      const uid = String(req.userId);
+      let rows = (store.transactions || []).filter((t) => String(t.userId) === uid && !t.deletedAt);
+
+      for (const t of rows) {
+        if (!t.category || t.category === 'other') {
+          const inferred = inferCategory(t.merchantName, t.merchantRaw);
+          if (inferred !== 'other') {
+            t.category = inferred;
+            t.merchantIcon = iconFor(inferred);
+          }
+        }
+      }
+
+      if (req.query.month) {
+        const p = resolveMonth(req.query.month);
+        rows = rows.filter((t) => {
+          const d = new Date(t.occurredAt);
+          return d >= p.start && d <= p.end;
+        });
+      }
       if (req.query.category) rows = rows.filter((t) => t.category === req.query.category);
+      if (req.query.includeNonExpense !== 'true') {
+        rows = rows.filter((t) => t.isExpense && t.direction === 'debit');
+      }
+
+      const sort = req.query.sort || 'date_desc';
+      if (sort === 'date_desc') rows.sort((a, b) => new Date(b.occurredAt) - new Date(a.occurredAt));
+      if (sort === 'date_asc') rows.sort((a, b) => new Date(a.occurredAt) - new Date(b.occurredAt));
+      if (sort === 'amount_desc') rows.sort((a, b) => b.amount - a.amount);
+      if (sort === 'amount_asc') rows.sort((a, b) => a.amount - b.amount);
+
+      const limit = Math.min(Number(req.query.limit) || 30, 100);
       return res.json({
-        transactions: rows,
-        nextCursor: null,
+        transactions: rows.slice(0, limit),
+        nextCursor: rows.length > limit ? rows[limit - 1]._id : null,
       });
     }
 
