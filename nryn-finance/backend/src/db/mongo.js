@@ -27,6 +27,12 @@ function sanitizeMongoUri(rawUri) {
     const decodedPass = decodeURIComponent(pass);
     const encodedPass = encodeURIComponent(decodedPass);
     const encodedUser = encodeURIComponent(decodeURIComponent(user));
+
+    if (!hostAndDb.includes('authSource=')) {
+      const sep = hostAndDb.includes('?') ? '&' : '?';
+      hostAndDb = `${hostAndDb}${sep}authSource=admin`;
+    }
+
     return `${prefix}${encodedUser}:${encodedPass}@${hostAndDb}`;
   } catch {
     return rawUri;
