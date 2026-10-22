@@ -58,24 +58,26 @@ const DATE_FORMATS = [
  * the wrong day's budget (§11.5).
  */
 function extractOccurredAt(body, fallback = new Date()) {
+  const fallbackDate = typeof fallback === 'number'
+    ? new Date(fallback)
+    : (fallback instanceof Date && !isNaN(fallback.getTime()) ? fallback : new Date());
   const m = body.match(/\b(\d{1,2}[-/\s]?[A-Za-z]{3}[-/\s]?\d{2,4}|\d{1,2}[-/]\d{1,2}[-/]\d{2,4}|\d{4}-\d{2}-\d{2})\b/);
-  if (!m) return fallback;
+  if (!m) return fallbackDate;
 
   const raw = m[1].replace(/\s+/g, ' ').trim();
   for (const fmt of DATE_FORMATS) {
     const dt = DateTime.fromFormat(raw, fmt, { zone: ZONE });
     if (dt.isValid) {
-      // Guard against a misread producing something absurd.
       const now = DateTime.now().setZone(ZONE);
-      if (dt > now.plus({ days: 2 }) || dt < now.minus({ years: 6 })) return fallback;
-
-      // Carry the clock time from receivedAt — SMS dates have no time part,
-      // and midnight would put late-night spends on the wrong side of a day.
-      const rec = DateTime.fromJSDate(fallback).setZone(ZONE);
-      return dt.set({ hour: rec.hour, minute: rec.minute, second: rec.second }).toJSDate();
+      if (dt > now.plus({ days: 2 }) || dt < now.minus({ years: 6 })) return fallbackDate;
+      const rec = DateTime.fromJSDate(fallbackDate).setZone(ZONE);
+      if (rec.isValid) {
+        return dt.set({ hour: rec.hour, minute: rec.minute, second: rec.second }).toJSDate();
+      }
+      return dt.toJSDate();
     }
   }
-  return fallback;
+  return fallbackDate;
 }
 
 /* ───────────────────────── redaction ───────────────────────── */

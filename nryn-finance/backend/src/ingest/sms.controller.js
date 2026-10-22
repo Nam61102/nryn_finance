@@ -10,13 +10,94 @@ const { store, save } = require('../db/fallback.store');
 
 const MAX_BATCH = 200;
 
+function parseAndSaveSmsFallback(messages, userId) {
+  const { runPatterns } = require('../parse/patterns');
+  const N = require('../parse/normalize');
+  const { iconFor } = require('../shared/categories');
+  const { bankFor } = require('../parse/senders');
+
+  let accepted = 0;
+  let duplicates = 0;
+  let parsedCount = 0;
+  const newTransactions = [];
+
+  for (const m of messages) {
+    if (!m || !m.body) continue;
+    accepted++;
+    const body = String(m.body);
+    const sender = String(m.sender || '');
+    const receivedAt = m.receivedAt || Date.now();
+
+    const isOtp = /(?:is\s+(?:your\s+|the\s+)?otp\b|\botp\s+(?:is|to\s+approve|to\s+complete)\b|\buse\s+otp\b|\bvalid\s+for\s+\d+\s*min|\bexpires\s+in\s+\d+\s*min)/i.test(body);
+    if (isOtp) continue;
+
+    const hit = runPatterns(body, { sender, receivedAt, source: 'sms' });
+    if (!hit || !hit.amount) continue;
+
+    const merchantRaw = hit.merchantRaw || '';
+    const merchantName = N.cleanMerchant(merchantRaw) || merchantRaw || 'Bank Transaction';
+    const mKey = N.merchantKey(merchantName);
+    const verdict = N.classify({ body, direction: hit.direction, merchantKey: mKey });
+    if (verdict.drop) continue;
+
+    const isDup = (store.transactions || []).some(
+      (t) =>
+        String(t.userId) === String(userId) &&
+        t.amount === hit.amount &&
+        t.direction === hit.direction &&
+        (hit.refId && t.refId === hit.refId)
+    );
+    if (isDup) {
+      duplicates++;
+      continue;
+    }
+
+    let category = verdict.category || (hit.direction === 'credit' ? 'income' : 'other');
+    const txn = {
+      _id: 'txn_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7),
+      userId: String(userId),
+      source: 'sms',
+      amount: hit.amount,
+      direction: hit.direction,
+      occurredAt: hit.occurredAt ? new Date(hit.occurredAt).toISOString() : new Date(receivedAt).toISOString(),
+      merchantRaw,
+      merchantName: merchantName || 'Bank Transaction',
+      merchantIcon: iconFor(category),
+      category,
+      categorySource: 'rule',
+      categoryConfidence: hit.confidence || 0.9,
+      account: {
+        bankName: hit.bankName || bankFor(sender) || 'Bank',
+        last4: hit.last4 || null,
+        type: hit.accountType || 'savings',
+      },
+      method: hit.method || 'upi',
+      refId: hit.refId || undefined,
+      isExpense: verdict.isExpense,
+      balanceAfter: hit.balanceAfter || null,
+      createdAt: new Date().toISOString(),
+    };
+
+    store.transactions.unshift(txn);
+    newTransactions.push(txn);
+    parsedCount++;
+  }
+
+  if (parsedCount > 0) {
+    save();
+  }
+
+  return { accepted, duplicates, parsedCount, newTransactions };
+}
+
 async function postSms(req, res) {
   const { deviceId, messages } = req.body || {};
   if (!Array.isArray(messages)) return res.status(400).json({ error: 'messages_array_required' });
   if (messages.length > MAX_BATCH) return res.status(413).json({ error: 'batch_too_large', max: MAX_BATCH });
 
   if (!isConnected()) {
-    return res.status(202).json({ accepted: messages.length, duplicates: 0 });
+    const { accepted, duplicates, parsedCount } = parseAndSaveSmsFallback(messages, req.userId);
+    return res.status(202).json({ accepted, duplicates, parsed: parsedCount });
   }
 
   const result = await ingestBatch({ userId: req.userId, deviceId, source: 'sms', messages });
@@ -201,6 +282,18 @@ async function pasteSms(req, res) {
       body,
       receivedAt: Date.now(),
     }));
+
+    if (!isConnected()) {
+      const { accepted, duplicates, parsedCount, newTransactions } = parseAndSaveSmsFallback(messages, req.userId);
+      return res.json({
+        ok: true,
+        accepted,
+        duplicates,
+        rejected: 0,
+        parsed: { processed: accepted, parsed: parsedCount },
+        transactions: newTransactions,
+      });
+    }
 
     const result = await ingestBatch({ userId: req.userId, source: 'sms', messages });
     const drainStats = await drainPending({ limit: 100 });

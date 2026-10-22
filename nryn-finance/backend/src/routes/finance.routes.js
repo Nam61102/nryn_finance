@@ -18,13 +18,43 @@ router.patch('/transactions/:id', txn.update);
 router.delete('/transactions/:id', txn.remove);
 
 const { isConnected } = require('../db/mongo');
+const { store } = require('../db/fallback.store');
+const { resolveMonth } = require('../finance/period');
 
 router.get('/analytics/summary', async (req, res) => {
-  if (!isConnected()) return res.json({ spent: 0, income: 0, count: 0, net: 0, topCategory: null });
+  if (!isConnected()) {
+    const userTxns = (store.transactions || []).filter(
+      (t) => String(t.userId) === String(req.userId) && !t.deletedAt
+    );
+    const spent = userTxns.filter((t) => t.isExpense && t.direction === 'debit').reduce((s, t) => s + (t.amount || 0), 0);
+    const income = userTxns.filter((t) => t.direction === 'credit' && t.category === 'income').reduce((s, t) => s + (t.amount || 0), 0);
+    return res.json({ spent, income, count: userTxns.length, net: income - spent, topCategory: null });
+  }
   res.json(await analytics.monthSummary(req.userId, req.query.month));
 });
 router.get('/analytics/by-category', async (req, res) => {
-  if (!isConnected()) return res.json({ categories: [], totalSpent: 0 });
+  if (!isConnected()) {
+    const { BY_KEY } = require('../shared/categories');
+    const userTxns = (store.transactions || []).filter(
+      (t) => String(t.userId) === String(req.userId) && !t.deletedAt && t.isExpense && t.direction === 'debit'
+    );
+    const catMap = {};
+    for (const t of userTxns) {
+      const c = t.category || 'other';
+      catMap[c] = (catMap[c] || 0) + (t.amount || 0);
+    }
+    const categories = Object.entries(catMap).map(([category, spent]) => ({
+      category,
+      label: BY_KEY[category]?.label || category,
+      icon: BY_KEY[category]?.icon || '📦',
+      color: BY_KEY[category]?.color || '#FF6D00',
+      spent,
+      count: userTxns.filter((t) => (t.category || 'other') === category).length,
+    })).sort((a, b) => b.spent - a.spent);
+    const totalSpent = categories.reduce((s, c) => s + c.spent, 0);
+    const p = resolveMonth(req.query.month);
+    return res.json({ period: p, categories, totalSpent });
+  }
   res.json(await analytics.byCategory(req.userId, req.query.month));
 });
 router.get('/analytics/series', async (req, res) => {
@@ -32,7 +62,10 @@ router.get('/analytics/series', async (req, res) => {
   res.json(await analytics.series(req.userId, req.query.range, req.query.bucket));
 });
 router.get('/analytics/months', async (req, res) => {
-  if (!isConnected()) return res.json({ months: [] });
+  if (!isConnected()) {
+    const current = resolveMonth();
+    return res.json({ months: [{ month: current.month, label: current.label, shortLabel: current.shortLabel }] });
+  }
   res.json({ months: await analytics.availableMonths(req.userId) });
 });
 

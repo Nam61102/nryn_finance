@@ -129,19 +129,78 @@ async function deleteBudget(req, res) {
 async function getStatus(req, res) {
   try {
     if (!isConnected()) {
-      const userBudgets = store.budgets.filter((b) => b.userId === req.userId);
+      const uid = String(req.userId);
+      const userBudgets = store.budgets.filter((b) => String(b.userId) === uid);
       const totalB = userBudgets.find((b) => b.scope === 'total')?.amount || 0;
       const dailyB = userBudgets.find((b) => b.scope === 'daily')?.amount || 0;
+      const p = resolveMonth(req.query.month);
+
+      const userTxns = (store.transactions || []).filter(
+        (t) => String(t.userId) === uid && !t.deletedAt && t.isExpense && t.direction === 'debit'
+      );
+      const spent = userTxns.reduce((sum, t) => sum + (t.amount || 0), 0);
+      const remaining = totalB - spent;
+
+      const { BY_KEY } = require('../shared/categories');
+      const { paceFor } = require('./budget.service');
+
+      const categoryBudgets = userBudgets.filter((b) => b.scope === 'category' && b.category);
+      const chips = categoryBudgets.map((b) => {
+        const catSpent = userTxns.filter((t) => t.category === b.category).reduce((s, t) => s + (t.amount || 0), 0);
+        return {
+          category: b.category,
+          label: BY_KEY[b.category]?.label || b.category,
+          icon: BY_KEY[b.category]?.icon || '📦',
+          color: BY_KEY[b.category]?.color || '#FF6D00',
+          budget: b.amount,
+          spent: catSpent,
+          remaining: b.amount - catSpent,
+          ratio: b.amount > 0 ? Math.min(catSpent / b.amount, 1) : 0,
+          over: catSpent > b.amount,
+          isOverride: false,
+        };
+      });
+      const allocated = chips.reduce((s, c) => s + c.budget, 0);
+
       return res.json({
+        period: p,
+        comparison: {
+          currentSpent: spent,
+          lastMonthSpent: 0,
+          diff: 0,
+          isSaved: false,
+          isMore: false,
+          savedAmount: 0,
+          moreAmount: 0,
+          percentChange: null,
+          prevMonth: p.prev,
+          prevLabel: '',
+          prevFullLabel: '',
+          comparisonText: spent === 0 ? 'No expenses recorded' : 'First tracked month',
+        },
+        ring: {
+          total: totalB,
+          spent,
+          remaining,
+          ratio: totalB > 0 ? Math.min(spent / totalB, 1) : 0,
+          over: spent > totalB && totalB > 0,
+        },
+        dailyBudget: dailyB,
+        pace: paceFor(spent, totalB, p.elapsedDays, p.totalDays),
+        chips,
+        unallocated: totalB - allocated,
+        todaySpent: 0,
+        needsReview: 0,
+        txnCount: userTxns.length,
         hasBudget: Boolean(totalB || dailyB),
         totalBudgetPaise: totalB,
         totalBudgetINR: Math.round(totalB / 100),
         dailyBudgetPaise: dailyB,
         dailyBudgetINR: Math.round(dailyB / 100),
-        spentPaise: 0,
-        spentINR: 0,
-        remainingPaise: totalB,
-        remainingINR: Math.round(totalB / 100),
+        spentPaise: spent,
+        spentINR: Math.round(spent / 100),
+        remainingPaise: remaining,
+        remainingINR: Math.round(remaining / 100),
         categories: [],
       });
     }
