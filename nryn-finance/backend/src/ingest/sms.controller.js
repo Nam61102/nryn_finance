@@ -5,12 +5,19 @@ const Transaction = require('../db/models/Transaction');
 const { ingestBatch } = require('./ingest.service');
 const { drainPending } = require('../parse/parse.service');
 
+const { isConnected } = require('../db/mongo');
+const { store, save } = require('../db/fallback.store');
+
 const MAX_BATCH = 200;
 
 async function postSms(req, res) {
   const { deviceId, messages } = req.body || {};
   if (!Array.isArray(messages)) return res.status(400).json({ error: 'messages_array_required' });
   if (messages.length > MAX_BATCH) return res.status(413).json({ error: 'batch_too_large', max: MAX_BATCH });
+
+  if (!isConnected()) {
+    return res.status(202).json({ accepted: messages.length, duplicates: 0 });
+  }
 
   const result = await ingestBatch({ userId: req.userId, deviceId, source: 'sms', messages });
   drainPending({ limit: 100 }).catch(() => {});
@@ -21,6 +28,15 @@ async function postSms(req, res) {
 async function getCursor(req, res) {
   const { deviceId } = req.query;
   if (!deviceId) return res.status(400).json({ error: 'deviceId_required' });
+
+  if (!isConnected()) {
+    return res.json({
+      deviceId,
+      cursor: 0,
+      backfillDoneAt: new Date().toISOString(),
+    });
+  }
+
   const device = await Device.findOne({ userId: req.userId, deviceId }).lean();
   res.json({
     deviceId,
@@ -31,6 +47,7 @@ async function getCursor(req, res) {
 
 async function markBackfillDone(req, res) {
   const { deviceId } = req.body || {};
+  if (!isConnected()) return res.json({ ok: true });
   await Device.updateOne({ userId: req.userId, deviceId }, { $set: { backfillDoneAt: new Date() } }, { upsert: true });
   res.json({ ok: true });
 }

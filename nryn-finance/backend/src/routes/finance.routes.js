@@ -17,10 +17,24 @@ router.get('/transactions/:id', txn.getOne);
 router.patch('/transactions/:id', txn.update);
 router.delete('/transactions/:id', txn.remove);
 
-router.get('/analytics/summary', async (req, res) => res.json(await analytics.monthSummary(req.userId, req.query.month)));
-router.get('/analytics/by-category', async (req, res) => res.json(await analytics.byCategory(req.userId, req.query.month)));
-router.get('/analytics/series', async (req, res) => res.json(await analytics.series(req.userId, req.query.range, req.query.bucket)));
-router.get('/analytics/months', async (req, res) => res.json({ months: await analytics.availableMonths(req.userId) }));
+const { isConnected } = require('../db/mongo');
+
+router.get('/analytics/summary', async (req, res) => {
+  if (!isConnected()) return res.json({ spent: 0, income: 0, count: 0, net: 0, topCategory: null });
+  res.json(await analytics.monthSummary(req.userId, req.query.month));
+});
+router.get('/analytics/by-category', async (req, res) => {
+  if (!isConnected()) return res.json({ categories: [], totalSpent: 0 });
+  res.json(await analytics.byCategory(req.userId, req.query.month));
+});
+router.get('/analytics/series', async (req, res) => {
+  if (!isConnected()) return res.json({ series: [] });
+  res.json(await analytics.series(req.userId, req.query.range, req.query.bucket));
+});
+router.get('/analytics/months', async (req, res) => {
+  if (!isConnected()) return res.json({ months: [] });
+  res.json({ months: await analytics.availableMonths(req.userId) });
+});
 
 router.get('/budgets', budget.listBudgets);
 router.post('/budgets', budget.upsertBudget);

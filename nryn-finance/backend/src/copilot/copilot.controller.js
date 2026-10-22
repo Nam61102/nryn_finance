@@ -1,4 +1,5 @@
 'use strict';
+const { isConnected } = require('../db/mongo');
 const { processChat, streamChat } = require('./copilot.service');
 const { calculateSafeSpend } = require('./safespend.service');
 const { detectAnomalies } = require('./anomaly.service');
@@ -39,6 +40,9 @@ exports.chatStream = async (req, res, next) => {
 // ── 2. Safe-to-Spend & Daily Allowance ──
 exports.getSafeSpend = async (req, res, next) => {
   try {
+    if (!isConnected()) {
+      return res.json({ safeSpendINR: 0, status: 'NORMAL', daysLeft: 30, remainingBudgetINR: 0 });
+    }
     const month = req.query.month;
     const result = await calculateSafeSpend(req.userId, month);
     return res.json(result);
@@ -50,6 +54,7 @@ exports.getSafeSpend = async (req, res, next) => {
 // ── 3. Anomaly & Fraud Watchdog ──
 exports.getAnomalies = async (req, res, next) => {
   try {
+    if (!isConnected()) return res.json({ anomalies: [] });
     const result = await detectAnomalies(req.userId);
     return res.json(result);
   } catch (err) {
@@ -60,6 +65,7 @@ exports.getAnomalies = async (req, res, next) => {
 // ── 4. Recurring Subscriptions & Zombie Hunter ──
 exports.getSubscriptions = async (req, res, next) => {
   try {
+    if (!isConnected()) return res.json({ subscriptions: [] });
     const result = await detectSubscriptions(req.userId);
     return res.json(result);
   } catch (err) {
@@ -117,6 +123,7 @@ exports.getTaxRadar = async (req, res, next) => {
 // ── 7. Dynamic AI Merchant & Overspending Recommendations ──
 exports.getRecommendations = async (req, res, next) => {
   try {
+    if (!isConnected()) return res.json({ recommendations: [], tips: [] });
     const month = req.query.month;
     const result = await generateRecommendations(req.userId, month);
     return res.json(result);
@@ -128,6 +135,16 @@ exports.getRecommendations = async (req, res, next) => {
 // ── 8. AI Agent Live Financial Briefing & Status Pill ──
 exports.getAgentBriefing = async (req, res, next) => {
   try {
+    if (!isConnected()) {
+      return res.json({
+        ok: true,
+        greeting: 'Hello!',
+        statusBadge: { text: 'AI Agent Ready', type: 'ACTIVE' },
+        summary: 'Your SMS AI Assistant is ready. Read your real expenses from SMS to view your daily briefing.',
+        highlights: [],
+        quickPrompts: ['How much can I spend today?', 'Show my subscriptions', 'Set a daily budget'],
+      });
+    }
     const month = req.query.month;
     const result = await generateAgentBriefing(req.userId, month);
     return res.json(result);

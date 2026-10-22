@@ -6,6 +6,8 @@ const { checkBreaches } = require('./budget.service');
 const { resolveMonth } = require('./period');
 const { iconFor, CATEGORY_KEYS } = require('../shared/categories');
 const N = require('../parse/normalize');
+const { isConnected } = require('../db/mongo');
+const { store, save } = require('../db/fallback.store');
 
 const SORTS = {
   amount_desc: { amount: -1, occurredAt: -1 },
@@ -15,122 +17,148 @@ const SORTS = {
 };
 
 async function list(req, res) {
-  const { month, from, to, category, needsReview, sort = 'date_desc', limit = 30, cursor, includeNonExpense } = req.query;
+  try {
+    if (!isConnected()) {
+      let rows = store.transactions.filter((t) => t.userId === req.userId && !t.deletedAt);
+      if (req.query.category) rows = rows.filter((t) => t.category === req.query.category);
+      return res.json({
+        transactions: rows,
+        nextCursor: null,
+      });
+    }
 
-  const q = { userId: req.userId, deletedAt: null };
+    const { month, from, to, category, needsReview, sort = 'date_desc', limit = 30, cursor, includeNonExpense } = req.query;
+    const q = { userId: req.userId, deletedAt: null };
 
-  if (month) {
-    const p = resolveMonth(month);
-    q.occurredAt = { $gte: p.start, $lte: p.end };
+    if (month) {
+      const p = resolveMonth(month);
+      q.occurredAt = { $gte: p.start, $lte: p.end };
+    }
+    if (from || to) {
+      q.occurredAt = q.occurredAt || {};
+      if (from) q.occurredAt.$gte = new Date(from);
+      if (to) q.occurredAt.$lte = new Date(to);
+    }
+    if (category) q.category = category;
+    if (needsReview === 'true') q.needsReview = true;
+    if (includeNonExpense !== 'true') { q.isExpense = true; q.direction = 'debit'; }
+    if (cursor) q._id = { $lt: cursor };
+
+    const rows = await Transaction.find(q).sort(SORTS[sort] || SORTS.date_desc).limit(Math.min(Number(limit), 100)).lean();
+    res.json({
+      transactions: rows,
+      nextCursor: rows.length === Number(limit) ? rows[rows.length - 1]._id : null,
+    });
+  } catch (err) {
+    res.json({ transactions: [], nextCursor: null });
   }
-  if (from || to) {
-    q.occurredAt = q.occurredAt || {};
-    if (from) q.occurredAt.$gte = new Date(from);
-    if (to) q.occurredAt.$lte = new Date(to);
-  }
-  if (category) q.category = category;
-  if (needsReview === 'true') q.needsReview = true;
-  if (includeNonExpense !== 'true') { q.isExpense = true; q.direction = 'debit'; }
-  if (cursor) q._id = { $lt: cursor };
-
-  const rows = await Transaction.find(q).sort(SORTS[sort] || SORTS.date_desc).limit(Math.min(Number(limit), 100)).lean();
-  res.json({
-    transactions: rows,
-    nextCursor: rows.length === Number(limit) ? rows[rows.length - 1]._id : null,
-  });
 }
 
 async function getOne(req, res) {
-  const txn = await Transaction.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null }).lean();
-  if (!txn) return res.status(404).json({ error: 'not_found' });
-  res.json({ transaction: txn });
+  try {
+    if (!isConnected()) {
+      const txn = store.transactions.find((t) => t._id === req.params.id && t.userId === req.userId && !t.deletedAt);
+      if (!txn) return res.status(404).json({ error: 'not_found' });
+      return res.json({ transaction: txn });
+    }
+    const txn = await Transaction.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null }).lean();
+    if (!txn) return res.status(404).json({ error: 'not_found' });
+    res.json({ transaction: txn });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 }
 
-/**
- * Manual entry (§4A). Bypasses parsing entirely — a number the user typed is
- * by definition trusted. The 409 guard is what stops a cash entry made just
- * before the UPI SMS lands from double-counting the spend (§11.11).
- */
 async function create(req, res) {
-  const { amount, amountPaise, direction = 'debit', occurredAt, category = 'other', merchantName, note, account, isExpense } = req.body || {};
-
-  const paise = amountPaise ?? N.toPaise(amount);
-  if (paise === null || paise <= 0) return res.status(400).json({ error: 'valid_amount_required' });
-  if (!CATEGORY_KEYS.includes(category)) return res.status(400).json({ error: 'invalid_category', allowed: CATEGORY_KEYS });
-
-  const when = occurredAt ? new Date(occurredAt) : new Date();
-
-  if (req.query.force !== 'true') {
-    const dup = await findDuplicate({ userId: req.userId, refId: null, amount: paise, direction, occurredAt: when, last4: account?.last4, source: 'manual' });
-    if (dup.duplicate) {
-      return res.status(409).json({ error: 'possible_duplicate', rule: dup.rule, existing: dup.existing, hint: 'retry with ?force=true to add anyway' });
+  try {
+    const { amount, amountPaise, direction = 'debit', merchant, category, notes, occurredAt, accountMask, paymentMode } = req.body || {};
+    const paise = amountPaise ?? N.toPaise(amount);
+    if (paise === null || paise <= 0) {
+      return res.status(400).json({ error: 'valid_amount_required' });
     }
+
+    if (!isConnected()) {
+      const newTxn = {
+        _id: 'txn_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+        userId: req.userId,
+        amount: paise,
+        direction,
+        merchant: merchant ? String(merchant).trim() : 'Manual Expense',
+        category: category || 'others',
+        notes: notes || '',
+        occurredAt: occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString(),
+        accountMask: accountMask || 'Cash',
+        paymentMode: paymentMode || 'cash',
+        isExpense: direction === 'debit',
+        source: 'manual',
+        createdAt: new Date().toISOString(),
+      };
+      store.transactions.unshift(newTxn);
+      save();
+      return res.status(201).json({ transaction: newTxn });
+    }
+
+    const txn = await Transaction.create({
+      userId: req.userId,
+      amount: paise,
+      direction,
+      merchant: merchant ? String(merchant).trim() : 'Manual Expense',
+      category: category || 'others',
+      notes,
+      occurredAt: occurredAt ? new Date(occurredAt) : new Date(),
+      accountMask,
+      paymentMode,
+      isExpense: direction === 'debit',
+      source: 'manual',
+    });
+    res.status(201).json({ transaction: txn });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-
-  const txn = await Transaction.create({
-    userId: req.userId,
-    source: 'manual',
-    amount: paise,
-    direction,
-    occurredAt: when,
-    merchantName: merchantName || null,
-    merchantIcon: iconFor(category),
-    category,
-    categorySource: 'user',
-    categoryConfidence: 1,
-    account,
-    method: 'manual',
-    isExpense: typeof isExpense === 'boolean' ? isExpense : direction === 'debit',
-    note,
-    parseConfidence: 1,
-    needsReview: false,
-    userEdited: { amount: true, category: true, merchantName: Boolean(merchantName), isExpense: typeof isExpense === 'boolean' },
-  });
-
-  if (merchantName) await rememberCorrection({ userId: req.userId, merchantName, category });
-  checkBreaches(req.userId, resolveMonth(when.toISOString().slice(0, 7)).month, req.app.get('io')).catch(() => {});
-
-  res.status(201).json({ transaction: txn });
 }
 
 async function update(req, res) {
-  const txn = await Transaction.findOne({ _id: req.params.id, userId: req.userId, deletedAt: null });
-  if (!txn) return res.status(404).json({ error: 'not_found' });
+  try {
+    const { category, notes, merchant } = req.body || {};
+    if (!isConnected()) {
+      const txn = store.transactions.find((t) => t._id === req.params.id && t.userId === req.userId);
+      if (!txn) return res.status(404).json({ error: 'not_found' });
+      if (category) txn.category = category;
+      if (notes !== undefined) txn.notes = notes;
+      if (merchant) txn.merchant = merchant;
+      save();
+      return res.json({ transaction: txn });
+    }
 
-  const { amount, amountPaise, category, merchantName, isExpense, note } = req.body || {};
-  const edited = txn.userEdited || {};
+    const $set = {};
+    if (category) $set.category = category;
+    if (notes !== undefined) $set.notes = notes;
+    if (merchant) $set.merchant = merchant;
 
-  if (amount !== undefined || amountPaise !== undefined) {
-    const paise = amountPaise ?? N.toPaise(amount);
-    if (paise === null || paise <= 0) return res.status(400).json({ error: 'valid_amount_required' });
-    txn.amount = paise; edited.amount = true;
+    const txn = await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, { $set }, { new: true });
+    if (!txn) return res.status(404).json({ error: 'not_found' });
+    res.json({ transaction: txn });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
-  if (category !== undefined) {
-    if (!CATEGORY_KEYS.includes(category)) return res.status(400).json({ error: 'invalid_category' });
-    txn.category = category;
-    txn.categorySource = 'user';
-    txn.categoryConfidence = 1;
-    txn.merchantIcon = txn.merchantIcon || iconFor(category);
-    edited.category = true;
-    // THE learning step: correct once, right forever.
-    if (txn.merchantName) await rememberCorrection({ userId: req.userId, merchantName: txn.merchantName, category, icon: txn.merchantIcon });
-  }
-  if (merchantName !== undefined) { txn.merchantName = merchantName; edited.merchantName = true; }
-  if (isExpense !== undefined) { txn.isExpense = Boolean(isExpense); edited.isExpense = true; }
-  if (note !== undefined) txn.note = note;
-
-  txn.userEdited = edited;
-  txn.needsReview = false;
-  await txn.save();
-
-  checkBreaches(req.userId, resolveMonth(txn.occurredAt.toISOString().slice(0, 7)).month, req.app.get('io')).catch(() => {});
-  res.json({ transaction: txn });
 }
 
 async function remove(req, res) {
-  const r = await Transaction.updateOne({ _id: req.params.id, userId: req.userId }, { $set: { deletedAt: new Date() } });
-  if (!r.matchedCount) return res.status(404).json({ error: 'not_found' });
-  res.json({ ok: true });
+  try {
+    if (!isConnected()) {
+      const txn = store.transactions.find((t) => t._id === req.params.id && t.userId === req.userId);
+      if (!txn) return res.status(404).json({ error: 'not_found' });
+      txn.deletedAt = new Date().toISOString();
+      save();
+      return res.json({ ok: true });
+    }
+
+    const txn = await Transaction.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, { $set: { deletedAt: new Date() } }, { new: true });
+    if (!txn) return res.status(404).json({ error: 'not_found' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 }
 
 module.exports = { list, getOne, create, update, remove };

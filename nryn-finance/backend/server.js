@@ -74,10 +74,18 @@ app.get('/api/health', async (req, res) => {
 
   // Masked mongoUri for safe diagnostics
   let maskedUri = null;
+  let passDiag = null;
   if (env.mongoUri) {
     try {
       const u = new URL(env.mongoUri.replace('mongodb+srv://', 'http://').replace('mongodb://', 'http://'));
       maskedUri = `mongodb+srv://${u.username || 'user'}:****@${u.host}${u.pathname}`;
+      const p = u.password || '';
+      passDiag = {
+        length: p.length,
+        hasBrackets: p.startsWith('<') && p.endsWith('>'),
+        firstChar: p.length > 0 ? p[0] : null,
+        lastChar: p.length > 0 ? p[p.length - 1] : null,
+      };
     } catch {
       maskedUri = 'configured';
     }
@@ -89,6 +97,7 @@ app.get('/api/health', async (req, res) => {
     mongoError: getLastError(),
     mongoConfigured: Boolean(env.mongoUri),
     mongoUriMasked: maskedUri,
+    mongoPassDiag: passDiag,
     capabilities: env.capabilities,
     missing: { llm: env.missingFor('llm'), gmail: env.missingFor('gmail') },
     lastMessageAt,

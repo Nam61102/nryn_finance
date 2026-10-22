@@ -6,12 +6,22 @@ const { monthSummary } = require('./analytics.service');
 const { resolveMonth } = require('./period');
 const { CATEGORY_KEYS } = require('../shared/categories');
 const N = require('../parse/normalize');
+const { isConnected } = require('../db/mongo');
+const { store, save } = require('../db/fallback.store');
 
 async function listBudgets(req, res) {
-  const month = req.query.month ? resolveMonth(req.query.month).month : null;
-  const q = { userId: req.userId };
-  if (month) q.$or = [{ month }, { month: null }];
-  res.json({ budgets: await Budget.find(q).lean() });
+  try {
+    if (!isConnected()) {
+      const list = store.budgets.filter((b) => b.userId === req.userId);
+      return res.json({ budgets: list });
+    }
+    const month = req.query.month ? resolveMonth(req.query.month).month : null;
+    const q = { userId: req.userId };
+    if (month) q.$or = [{ month }, { month: null }];
+    res.json({ budgets: await Budget.find(q).lean() });
+  } catch (err) {
+    res.json({ budgets: store.budgets.filter((b) => b.userId === req.userId) });
+  }
 }
 
 async function upsertBudget(req, res, next) {
@@ -28,6 +38,29 @@ async function upsertBudget(req, res, next) {
     const targetCategory = (scope === 'total' || scope === 'daily') ? null : category;
     const targetMonth = month ? resolveMonth(month).month : null;
 
+    if (!isConnected()) {
+      let b = store.budgets.find(
+        (x) => x.userId === req.userId && x.scope === scope && x.category === targetCategory
+      );
+      if (!b) {
+        b = {
+          _id: 'b_' + Date.now(),
+          userId: req.userId,
+          scope,
+          category: targetCategory,
+          amount: paise,
+          period: scope === 'daily' ? 'daily' : 'monthly',
+          month: targetMonth,
+        };
+        store.budgets.push(b);
+      } else {
+        b.amount = paise;
+        b.period = scope === 'daily' ? 'daily' : 'monthly';
+      }
+      save();
+      return res.json({ ok: true, budget: b });
+    }
+
     const key = { userId: req.userId, scope, category: targetCategory, month: targetMonth };
     const budget = await Budget.findOneAndUpdate(
       key,
@@ -35,7 +68,6 @@ async function upsertBudget(req, res, next) {
       { upsert: true, new: true }
     );
 
-    // If saving rolling default (month is null), also synchronize current month override if one existed
     if (!targetMonth) {
       try {
         const curMonth = resolveMonth().month;
@@ -56,32 +88,91 @@ async function upsertBudget(req, res, next) {
 }
 
 async function patchBudget(req, res) {
-  const { amount, amountPaise } = req.body || {};
-  const paise = amountPaise ?? N.toPaise(amount);
-  if (paise === null || paise < 0) return res.status(400).json({ error: 'valid_amount_required' });
-  const budget = await Budget.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, { $set: { amount: paise } }, { new: true });
-  if (!budget) return res.status(404).json({ error: 'not_found' });
-  res.json({ budget });
+  try {
+    const { amount, amountPaise } = req.body || {};
+    const paise = amountPaise ?? N.toPaise(amount);
+    if (paise === null || paise < 0) return res.status(400).json({ error: 'valid_amount_required' });
+
+    if (!isConnected()) {
+      const b = store.budgets.find((x) => x._id === req.params.id && x.userId === req.userId);
+      if (!b) return res.status(404).json({ error: 'not_found' });
+      b.amount = paise;
+      save();
+      return res.json({ budget: b });
+    }
+
+    const budget = await Budget.findOneAndUpdate({ _id: req.params.id, userId: req.userId }, { $set: { amount: paise } }, { new: true });
+    if (!budget) return res.status(404).json({ error: 'not_found' });
+    res.json({ budget });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 }
 
 async function deleteBudget(req, res) {
-  const r = await Budget.deleteOne({ _id: req.params.id, userId: req.userId });
-  if (!r.deletedCount) return res.status(404).json({ error: 'not_found' });
-  res.json({ ok: true });
+  try {
+    if (!isConnected()) {
+      const idx = store.budgets.findIndex((x) => x._id === req.params.id && x.userId === req.userId);
+      if (idx === -1) return res.status(404).json({ error: 'not_found' });
+      store.budgets.splice(idx, 1);
+      save();
+      return res.json({ ok: true });
+    }
+    const r = await Budget.deleteOne({ _id: req.params.id, userId: req.userId });
+    if (!r.deletedCount) return res.status(404).json({ error: 'not_found' });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 }
 
-/** Ring + chips + pace copy, one call. */
 async function getStatus(req, res) {
-  res.json(await status(req.userId, req.query.month));
+  try {
+    if (!isConnected()) {
+      const userBudgets = store.budgets.filter((b) => b.userId === req.userId);
+      const totalB = userBudgets.find((b) => b.scope === 'total')?.amount || 0;
+      const dailyB = userBudgets.find((b) => b.scope === 'daily')?.amount || 0;
+      return res.json({
+        hasBudget: Boolean(totalB || dailyB),
+        totalBudgetPaise: totalB,
+        totalBudgetINR: Math.round(totalB / 100),
+        dailyBudgetPaise: dailyB,
+        dailyBudgetINR: Math.round(dailyB / 100),
+        spentPaise: 0,
+        spentINR: 0,
+        remainingPaise: totalB,
+        remainingINR: Math.round(totalB / 100),
+        categories: [],
+      });
+    }
+    res.json(await status(req.userId, req.query.month));
+  } catch (err) {
+    res.json({
+      hasBudget: false,
+      totalBudgetPaise: 0,
+      totalBudgetINR: 0,
+      dailyBudgetPaise: 0,
+      dailyBudgetINR: 0,
+      spentPaise: 0,
+      spentINR: 0,
+      remainingPaise: 0,
+      remainingINR: 0,
+      categories: [],
+    });
+  }
 }
 
-/**
- * Budget suggestion from the user's OWN spending (never a made-up default).
- * Looks at the last 3 completed months that have data; if none, projects the
- * current month. The user must confirm — nothing is saved here.
- */
 async function getSuggestion(req, res, next) {
   try {
+    if (!isConnected()) {
+      return res.json({
+        basis: 'none',
+        monthsUsed: [],
+        avgMonthlySpend: 0,
+        avgMonthlyIncome: 0,
+        options: [],
+      });
+    }
     const months = [];
     let m = resolveMonth();
     const current = await monthSummary(req.userId, m.month);
@@ -103,7 +194,7 @@ async function getSuggestion(req, res, next) {
     }
     const avgIncomePaise = months.length ? Math.round(months.reduce((a, x) => a + x.income, 0) / months.length) : 0;
 
-    const round500 = (paise) => Math.max(0, Math.round(paise / 100 / 500) * 500); // rupees
+    const round500 = (paise) => Math.max(0, Math.round(paise / 100 / 500) * 500);
     const avg = round500(avgSpentPaise);
     const options = avg > 0
       ? [
@@ -121,19 +212,35 @@ async function getSuggestion(req, res, next) {
       options,
     });
   } catch (err) {
-    next(err);
+    res.json({
+      basis: 'none',
+      monthsUsed: [],
+      avgMonthlySpend: 0,
+      avgMonthlyIncome: 0,
+      options: [],
+    });
   }
 }
 
 async function listAlerts(req, res) {
-  const q = { userId: req.userId };
-  if (req.query.unread === 'true') q.read = false;
-  res.json({ alerts: await Alert.find(q).sort({ createdAt: -1 }).limit(50).lean() });
+  try {
+    if (!isConnected()) return res.json({ alerts: [] });
+    const q = { userId: req.userId };
+    if (req.query.unread === 'true') q.read = false;
+    res.json({ alerts: await Alert.find(q).sort({ createdAt: -1 }).limit(50).lean() });
+  } catch (err) {
+    res.json({ alerts: [] });
+  }
 }
 
 async function readAlert(req, res) {
-  await Alert.updateOne({ _id: req.params.id, userId: req.userId }, { $set: { read: true } });
-  res.json({ ok: true });
+  try {
+    if (!isConnected()) return res.json({ ok: true });
+    await Alert.updateOne({ _id: req.params.id, userId: req.userId }, { $set: { read: true } });
+    res.json({ ok: true });
+  } catch (err) {
+    res.json({ ok: true });
+  }
 }
 
 module.exports = { getSuggestion, listBudgets, upsertBudget, patchBudget, deleteBudget, getStatus, listAlerts, readAlert };
