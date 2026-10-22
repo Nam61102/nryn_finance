@@ -6,7 +6,7 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 
 const env = require('./src/config/env');
-const { connect, isConnected } = require('./src/db/mongo');
+const { connect, isConnected, getLastError } = require('./src/db/mongo');
 const { attachSocket } = require('./src/realtime/socket');
 const { startParseJob } = require('./src/jobs/parse.job');
 const { startDigestJob } = require('./src/jobs/digest.job');
@@ -15,6 +15,10 @@ const RawMessage = require('./src/db/models/RawMessage');
 const cookieParser = require('cookie-parser');
 
 const app = express();
+
+// Trust reverse proxy (Render, Cloudflare) so express-rate-limit and IP handling work safely
+app.set('trust proxy', 1);
+
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -39,20 +43,35 @@ app.use(express.json({ limit: '1mb' }));
 app.use(morgan(env.logLevel));
 
 /**
- * Silent ingest death is this system's characteristic failure mode, and on a
- * phone-driven pipeline it is even easier to not notice. So health reports
- * when the last message actually arrived.
+ * Health check: reports MongoDB connection status, last message timestamp,
+ * and masked config diagnostics.
  */
 app.get('/api/health', async (req, res) => {
   let lastMessageAt = null;
-  try {
-    const [last] = await RawMessage.find().sort({ receivedAt: -1 }).limit(1).select('receivedAt').lean();
-    lastMessageAt = last?.receivedAt || null;
-  } catch { /* mongo down — reported below */ }
+  if (isConnected()) {
+    try {
+      const [last] = await RawMessage.find().sort({ receivedAt: -1 }).limit(1).select('receivedAt').lean();
+      lastMessageAt = last?.receivedAt || null;
+    } catch { /* mongo down */ }
+  }
+
+  // Masked mongoUri for safe diagnostics
+  let maskedUri = null;
+  if (env.mongoUri) {
+    try {
+      const u = new URL(env.mongoUri.replace('mongodb+srv://', 'http://').replace('mongodb://', 'http://'));
+      maskedUri = `mongodb+srv://${u.username || 'user'}:****@${u.host}${u.pathname}`;
+    } catch {
+      maskedUri = 'configured';
+    }
+  }
 
   res.json({
     ok: isConnected(),
     mongo: isConnected() ? 'connected' : 'disconnected',
+    mongoError: getLastError(),
+    mongoConfigured: Boolean(env.mongoUri),
+    mongoUriMasked: maskedUri,
     capabilities: env.capabilities,
     missing: { llm: env.missingFor('llm'), gmail: env.missingFor('gmail') },
     lastMessageAt,
@@ -71,6 +90,14 @@ app.use((req, res) => res.status(404).json({ error: 'not_found', path: req.path 
 app.use((err, req, res, _next) => {
   console.error('  error  ', err);
   res.status(err.status || 500).json({ error: err.code || 'internal_error', message: err.message });
+});
+
+// Guard against unhandled rejections crashing the process
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('  unhandledRejection  ', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('  uncaughtException  ', err);
 });
 
 async function main() {
